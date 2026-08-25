@@ -206,13 +206,26 @@
 
       <section class="card" aria-labelledby="stepPay">
         <h2 class="card-title" id="stepPay"><span class="step-num" aria-hidden="true">4</span>Pay</h2>
+        <div class="field">
+          <span class="label-text">How would you like to pay?</span>
+          <div class="methods" id="payMethods">
+            <label class="method">
+              <input type="radio" name="paymentMethod" value="card" checked>
+              <span><b>Card</b><br><small>Pay now — confirmed straight away</small></span>
+            </label>
+            <label class="method">
+              <input type="radio" name="paymentMethod" value="etransfer">
+              <span><b>Interac e-Transfer</b><br><small>We'll show you where to send it</small></span>
+            </label>
+          </div>
+        </div>
         <div class="actions">
           <button type="submit">Review &amp; pay</button>
         </div>
         <p id="msg" class="hint"></p>
         <div id="orderIdBox" class="hidden order-id-box">
           Order number: <b id="orderIdText"></b>
-          <button type="button" id="copyOrderBtn" style="margin-left:8px;padding:5px 12px;font-size:14px">Copy for e-Transfer</button>
+          <button type="button" id="copyOrderBtn" style="margin-left:8px;padding:5px 12px;font-size:14px">Copy order number</button>
           <div class="hint" id="etransferInfo" style="margin-top:8px"></div>
         </div>
       </section>
@@ -271,9 +284,7 @@
     }
     renderMethods();
     recalc();
-    if (CFG.etransferAddress) {
-      $("etransferInfo").innerHTML = `Paying by e-Transfer? Send it to <a href="mailto:${CFG.etransferAddress}">${CFG.etransferAddress}</a> with your order number in the message.`;
-    }
+
   })();
 
   function renderMethods() {
@@ -641,6 +652,18 @@
     $("orderIdText").textContent = data.orderId;
     $("orderIdBox").classList.remove("hidden");
     bindCopyButton($("copyOrderBtn"), () => data.orderId);
+
+    if (data.paymentMethod === "etransfer") {
+      msg.className = "ok";
+      msg.innerHTML = `Order <b>${data.orderId}</b> is in. Send ${money(data.totalCents)} by Interac e-Transfer to
+                       <b>${data.etransferAddress}</b>, with the order number above in the message so we can match it.
+                       <a href="${statusUrl}">Track it here.</a>`;
+      $("etransferInfo").textContent = "Nothing prints until the transfer arrives — we'll email you the moment it does.";
+      submitBtn.textContent = "Order placed";
+      return;
+    }
+
+    $("etransferInfo").textContent = "";
 
     if (data.freeReward) {
       const rewardText = CFG.loyaltyRewardCents ? money(CFG.loyaltyRewardCents) + " loyalty discount" : "loyalty discount";
