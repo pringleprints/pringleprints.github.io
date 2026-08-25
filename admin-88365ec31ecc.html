@@ -2514,12 +2514,14 @@ var qrcode = function() {
 
     // Scanners expect dark modules on a light field. On a dark page the QR has
     // to keep its own white surround or it simply will not read.
-    function qrHtml(url) {
+    function qrHtml(url, code) {
       const qr = qrcode(0, "M");
       qr.addData(url);
       qr.make();
-      return `<div style="background:#fff;padding:12px;border-radius:10px;display:inline-block;line-height:0">
-        ${qr.createSvgTag({ cellSize: 4, margin: 0 })}
+      return `<div style="background:#fff;color:#111;padding:12px;border-radius:10px;display:inline-block;text-align:center">
+        <div style="line-height:0">${qr.createSvgTag({ cellSize: 4, margin: 0 })}</div>
+        <div style="font:700 13px/1.4 ui-monospace,monospace;margin-top:8px;letter-spacing:.5px">${code}</div>
+        <div style="font:11px/1.35 system-ui,sans-serif;color:#555;margin-top:2px">No camera? Enter this code<br>at pringleprints.ca/order</div>
       </div>`;
     }
 
@@ -2527,7 +2529,7 @@ var qrcode = function() {
       return `<div class="card" style="margin-top:.8rem">
         <div class="row"><span class="id">${c.code}</span>
           <span class="amt">${money(c.amountCents)}</span></div>
-        <div style="margin:.8rem 0">${qrHtml(c.url)}</div>
+        <div style="margin:.8rem 0">${qrHtml(c.url, c.code)}</div>
         <div class="muted" style="word-break:break-all">${c.url}</div>
         <div class="actions">
           <button data-copy="${c.url}">Copy link</button>

@@ -222,6 +222,13 @@
         <div class="actions">
           <button type="submit">Review &amp; pay</button>
         </div>
+        <div class="field" style="margin-top:.2rem">
+          <span class="label-text">Coupon</span>
+          <div style="display:flex;gap:8px;align-items:center">
+            <input id="couponInput" placeholder="PPC-XXXXX-XXXXX" autocomplete="off" spellcheck="false" style="text-transform:uppercase" />
+            <button type="button" id="couponApply" class="ghost" style="white-space:nowrap">Apply</button>
+          </div>
+        </div>
         <p id="couponNote" class="hint hidden"></p>
         <p id="msg" class="hint"></p>
         <div id="orderIdBox" class="hidden order-id-box">
@@ -292,22 +299,43 @@
 
   let COUPON = null;
 
+  async function applyCoupon(code) {
+    const trimmed = String(code || "").trim();
+    const note = $("couponNote");
+    if (!trimmed) {
+      COUPON = null;
+      note.classList.add("hidden");
+      recalc();
+      return false;
+    }
+    let data;
+    try {
+      data = await (await fetch(API_BASE + "/coupon?code=" + encodeURIComponent(trimmed))).json();
+    } catch {
+      note.textContent = "Couldn't check that coupon just now — you can still order and we'll sort it out.";
+      note.classList.remove("hidden");
+      return false;
+    }
+    note.classList.remove("hidden");
+    if (data.valid) {
+      COUPON = { code: trimmed, amountCents: data.amountCents };
+      note.textContent = `${money(data.amountCents)} coupon applied.`;
+      renderPaymentOptions();
+    } else {
+      COUPON = null;
+      note.textContent = data.message || "That coupon can't be used.";
+    }
+    recalc();
+    return !!data.valid;
+  }
+
+  // A scanned code lands in the same field someone else would type into, so
+  // what happened is visible rather than implied.
   async function loadCoupon() {
     const code = new URLSearchParams(location.search).get("coupon");
     if (!code) return;
-    let data;
-    try {
-      data = await (await fetch(API_BASE + "/coupon?code=" + encodeURIComponent(code))).json();
-    } catch {
-      return;
-    }
-    if (data.valid) {
-      COUPON = { code, amountCents: data.amountCents };
-    } else {
-      $("couponNote").textContent = data.message || "That coupon can't be used.";
-      $("couponNote").classList.remove("hidden");
-    }
-    renderPaymentOptions();
+    $("couponInput").value = code;
+    await applyCoupon(code);
   }
 
   // The coupon is offered as a way to pay, and picked for them — someone who
@@ -322,6 +350,14 @@
       <span><b>Coupon</b><br><small>${money(COUPON.amountCents)} off — code ${COUPON.code}</small></span>`;
     wrap.prepend(label);
   }
+
+  $("couponApply").addEventListener("click", () => applyCoupon($("couponInput").value));
+  $("couponInput").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      applyCoupon($("couponInput").value);
+    }
+  });
 
   function couponCents() {
     return COUPON ? Math.min(COUPON.amountCents, baseCents()) : 0;
