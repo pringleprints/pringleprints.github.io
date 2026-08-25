@@ -41,6 +41,8 @@
     .b-ready-for-pickup { background:#14401f; color:#86efac; }
     .b-shipped { background:#14401f; color:#86efac; }
     .b-delivered, .b-picked-up { background:#2e313a; color:#c3c7d0; }
+    .b-cancelled { background:#4a1717; color:#fca5a5; }
+    .danger { background:#4a1717; color:#fca5a5; border-color:#7f1d1d; font-weight:600; }
     .pill { font-size:.74rem; background:#23264a; color:#a5b4fc; padding:.15rem .5rem; border-radius:999px; }
     .flag { background:#4a1717; color:#fca5a5; font-size:.78rem; padding:.2rem .5rem; border-radius:8px; }
     .free { background:#14401f; color:#86efac; font-size:.78rem; padding:.2rem .5rem; border-radius:8px; }
@@ -2504,6 +2506,8 @@ var qrcode = function() {
         b.addEventListener("click", () => advance(b.dataset.advance, b.dataset.next || null, b.dataset.method, b.dataset.next || null)));
       list.querySelectorAll("[data-jump]").forEach((s) =>
         s.addEventListener("change", () => advance(s.dataset.jump, s.value, s.dataset.method, s.value)));
+      list.querySelectorAll("[data-cancel]").forEach((b) =>
+        b.addEventListener("click", () => cancelOrder(b.dataset.cancel, !!b.dataset.paid)));
       list.querySelectorAll("[data-file]").forEach((a) =>
         a.addEventListener("click", (e) => { e.preventDefault(); download(a.dataset.file, a.dataset.field, a.dataset.name); }));
     }
@@ -2613,8 +2617,39 @@ var qrcode = function() {
         ${o.fulfillment === "pickup" && o.pickupLocation ? `<div class="muted">📍 Meet at: ${escapeHtml(o.pickupLocation)}</div>` : ""}
         ${o.details ? `<div class="muted">“${escapeHtml(o.details)}”</div>` : ""}
         <div class="row" style="margin-top:.4rem">${pay} ${files}</div>
-        <div class="actions">${advanceBtn} ${jump}</div>
+        <div class="actions">${o.status === "cancelled" ? "" : `${advanceBtn} ${jump}`}
+          ${o.status === "cancelled" ? `<span class="muted">cancelled${o.refundedAt ? " · refunded" : ""}</span>`
+            : `<button class="danger" data-cancel="${o.id}" data-paid="${o.paid ? "1" : ""}">Cancel</button>`}</div>
       </div>`;
+    }
+
+    // Refunding is asked separately from cancelling, because they are
+    // different decisions: an order can be called off without money moving,
+    // and money can only move back if it was taken in the first place.
+    async function cancelOrder(orderId, paid) {
+      if (!confirm(`Cancel ${orderId}? The customer will be emailed.`)) return;
+      const refund = paid ? confirm("Also refund the payment?\n\nCard payments go back through Helcim. Anything else has to be returned by hand.") : false;
+      setStatus("Cancelling…");
+      try {
+        const res = await fetch(`${API}/admin/cancel`, {
+          method: "POST",
+          headers: { ...auth(), "content-type": "application/json" },
+          body: JSON.stringify({ orderId, refund }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Could not cancel that order.");
+        let note = `${orderId} cancelled.`;
+        if (data.refund && data.refund.attempted) {
+          note += data.refund.ok
+            ? " The card has been refunded."
+            : ` Not refunded: ${typeof data.refund.message === "string" ? data.refund.message : JSON.stringify(data.refund.message)}`;
+        }
+        if (data.refund && data.refund.couponReleased) note += ` Coupon ${data.refund.couponReleased} is usable again.`;
+        setStatus(note, data.refund && data.refund.attempted && !data.refund.ok ? "err" : "ok");
+        await load();
+      } catch (e) {
+        setStatus(e.message || "Could not cancel that order.", "err");
+      }
     }
 
     async function advance(orderId, stage, method, targetStage) {
