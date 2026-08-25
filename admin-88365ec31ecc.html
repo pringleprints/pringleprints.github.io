@@ -202,8 +202,9 @@
                 : `<span class="flag">awaiting payment</span>`;
       const ship = o.shippingCents ? ` + ${money(o.shippingCents)} ship` : "";
       const method = `<span class="pill">${METHOD_LABEL[o.fulfillment] || o.fulfillment || "—"}</span>`;
-      const files = (o.files || []).map((f) =>
-        `<a href="#" data-file="${o.id}" data-field="${f.field}" data-name="${f.name}">⬇ ${f.field.toUpperCase()}</a>`).join("");
+      const files = (o.files || []).map((f) => f.archivedUrl
+        ? `<a href="${f.archivedUrl}" target="_blank" rel="noopener" title="Archived to Proton Drive">⬇ ${f.field.toUpperCase()}</a>`
+        : `<a href="#" data-file="${o.id}" data-field="${f.field}" data-name="${f.name}">⬇ ${f.field.toUpperCase()}</a>`).join("");
       const jump = `<select data-jump="${o.id}" data-method="${o.fulfillment}">
           ${stages.map((s) => `<option value="${s}" data-jump-value="${s}" ${s===o.status?"selected":""}>${s}</option>`).join("")}
         </select>`;
