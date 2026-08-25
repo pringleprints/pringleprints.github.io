@@ -222,6 +222,7 @@
         <div class="actions">
           <button type="submit">Review &amp; pay</button>
         </div>
+        <p id="couponNote" class="hint hidden"></p>
         <p id="msg" class="hint"></p>
         <div id="orderIdBox" class="hidden order-id-box">
           Order number: <b id="orderIdText"></b>
@@ -282,10 +283,48 @@
       CFG = { methods: ["pickup", "delivery", "mail"], fees: { pickup: 0, delivery: 0, mail: 1500 },
                freeDeliveryOverCents: 0, minOrderCents: 0 };
     }
+    await loadCoupon();
     renderMethods();
     recalc();
 
   })();
+
+  let COUPON = null;
+
+  async function loadCoupon() {
+    const code = new URLSearchParams(location.search).get("coupon");
+    if (!code) return;
+    let data;
+    try {
+      data = await (await fetch(API_BASE + "/coupon?code=" + encodeURIComponent(code))).json();
+    } catch {
+      return;
+    }
+    if (data.valid) {
+      COUPON = { code, amountCents: data.amountCents };
+    } else {
+      $("couponNote").textContent = data.message || "That coupon can't be used.";
+      $("couponNote").classList.remove("hidden");
+    }
+    renderPaymentOptions();
+  }
+
+  // The coupon is offered as a way to pay, and picked for them — someone who
+  // scanned a code came here to spend it.
+  function renderPaymentOptions() {
+    if (!COUPON) return;
+    const wrap = $("payMethods");
+    if (wrap.querySelector('input[value="coupon"]')) return;
+    const label = document.createElement("label");
+    label.className = "method";
+    label.innerHTML = `<input type="radio" name="paymentMethod" value="coupon" checked>
+      <span><b>Coupon</b><br><small>${money(COUPON.amountCents)} off — code ${COUPON.code}</small></span>`;
+    wrap.prepend(label);
+  }
+
+  function couponCents() {
+    return COUPON ? Math.min(COUPON.amountCents, baseCents()) : 0;
+  }
 
   function renderMethods() {
     $("methods").innerHTML = CFG.methods.map((m, i) => {
@@ -342,13 +381,15 @@
     const base = baseCents();
     const method = chosenMethod();
     const fee = feeFor(method, base);
-    const total = base + fee;
+    const discount = couponCents();
+    const total = Math.max(0, base - discount) + fee;
     const batchLabel = $("batchSize").selectedOptions[0].textContent;
     const finishLabel = $("finish").selectedOptions[0].textContent;
     $("total").innerHTML =
       `<div class="summary-line"><span>${batchLabel}</span></div>` +
       `<div class="summary-line"><span>${finishLabel}</span></div>` +
       `<div class="summary-line"><span>${labels[method]}</span><b>${fee === 0 ? "Free" : money(fee)}</b></div>` +
+      (discount ? `<div class="summary-line"><span>Coupon</span><b>-${money(discount)}</b></div>` : "") +
       `<div class="summary-total"><span>Total</span><span>${money(total)}</span></div>`;
     $("summaryToggleTotal").textContent = money(total);
     $("methodTriggerText").textContent = labels[method];
@@ -626,6 +667,7 @@
     const notes = (fd.get("details") || "").trim();
     fd.set("details", `Batch: ${batchLabel}\nFinish: ${finishLabel}` + (notes ? `\nNotes: ${notes}` : ""));
     fd.set("amountCents", String(baseCents()));
+    if (COUPON) fd.set("couponCode", COUPON.code);
 
     let data;
     try {
@@ -652,6 +694,13 @@
     $("orderIdText").textContent = data.orderId;
     $("orderIdBox").classList.remove("hidden");
     bindCopyButton($("copyOrderBtn"), () => data.orderId);
+
+    if (fd.get("paymentMethod") === "coupon" && !data.free) {
+      msg.className = "hint";
+      msg.textContent = "Your coupon has been applied — there's still a balance, so choose card or e-Transfer.";
+      submitBtn.disabled = false;
+      return;
+    }
 
     if (data.paymentMethod === "etransfer") {
       msg.className = "ok";
