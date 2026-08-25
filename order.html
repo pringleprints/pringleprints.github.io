@@ -283,6 +283,7 @@
       CFG = { methods: ["pickup", "delivery", "mail"], fees: { pickup: 0, delivery: 0, mail: 1500 },
                freeDeliveryOverCents: 0, minOrderCents: 0 };
     }
+    renderPrices();
     await loadCoupon();
     renderMethods();
     recalc();
@@ -324,6 +325,17 @@
 
   function couponCents() {
     return COUPON ? Math.min(COUPON.amountCents, baseCents()) : 0;
+  }
+
+  function renderPrices() {
+    if (Array.isArray(CFG.batchTiers) && CFG.batchTiers.length) {
+      $("batchSize").innerHTML = CFG.batchTiers.map((t, i) =>
+        `<option value="${t.cents}" data-id="${t.id}"${i === 0 ? " selected" : ""}>${t.label} — ${money(t.cents)}${t.note ? ` (${t.note})` : ""}</option>`).join("");
+    }
+    if (Array.isArray(CFG.finishes) && CFG.finishes.length) {
+      $("finish").innerHTML = CFG.finishes.map((f, i) =>
+        `<option value="${f.label}" data-id="${f.id}" data-surcharge="${f.cents}"${i === 0 ? " selected" : ""}>${f.label}${f.cents ? ` (+${money(f.cents)})` : ""}${f.note ? ` (${f.note})` : ""}</option>`).join("");
+    }
   }
 
   function renderMethods() {
@@ -668,6 +680,10 @@
     fd.set("details", `Batch: ${batchLabel}\nFinish: ${finishLabel}` + (notes ? `\nNotes: ${notes}` : ""));
     fd.set("amountCents", String(baseCents()));
     if (COUPON) fd.set("couponCode", COUPON.code);
+    const batchId = $("batchSize").selectedOptions[0].dataset.id;
+    const finishId = $("finish").selectedOptions[0].dataset.id;
+    if (batchId) fd.set("batch", batchId);
+    if (finishId) fd.set("finish", finishId);
 
     let data;
     try {
