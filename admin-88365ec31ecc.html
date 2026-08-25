@@ -2,23 +2,28 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
+  <meta name="color-scheme" content="dark" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="robots" content="noindex, nofollow" />
   <title>PringlePrints — Order Admin</title>
   <script src="/assets.js"></script>
   <style>
-    :root { --bg:#f6f6f7; --card:#fff; --line:#e3e3e6; --ink:#111; --muted:#6b7280; }
+    :root { --bg:#16171b; --card:#1e2027; --line:#2e313a; --ink:#e9eaee; --muted:#9aa1ad;
+             --accent:#E0197D; --field:#121317; }
     * { box-sizing: border-box; }
     body { font: 16px/1.5 system-ui, sans-serif; margin: 0; background: var(--bg); color: var(--ink); }
-    header { position: sticky; top: 0; background: #111; color: #fff; padding: .8rem 1rem;
-             display: flex; align-items: center; gap: .75rem; }
+    header { position: sticky; top: 0; background: #0e0f12; color: #fff; padding: .8rem 1rem;
+             display: flex; align-items: center; gap: .75rem; border-bottom: 1px solid var(--line); }
     header h1 { font-size: 1.05rem; margin: 0; flex: 1; }
-    header button { background: #333; color: #fff; border: 0; border-radius: 8px; padding: .4rem .7rem; }
+    header button { background: var(--line); color: #fff; border: 0; border-radius: 8px; padding: .4rem .7rem; }
     main { max-width: 680px; margin: 0 auto; padding: 1rem; }
     .login { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 1.25rem; }
     label { display: block; font-weight: 600; margin: .8rem 0 .25rem; }
-    input, select { width: 100%; padding: .6rem; border: 1px solid #ccc; border-radius: 8px; font: inherit; }
-    .primary { background: #111; color: #fff; border: 0; border-radius: 8px; padding: .7rem 1.1rem;
+    input, select { width: 100%; padding: .6rem; border: 1px solid var(--line); border-radius: 8px;
+             font: inherit; background: var(--field); color: var(--ink); }
+    input:focus-visible, select:focus-visible, button:focus-visible, a:focus-visible {
+             outline: 2px solid var(--accent); outline-offset: 2px; }
+    .primary { background: var(--accent); color: #fff; border: 0; border-radius: 8px; padding: .7rem 1.1rem;
                font-weight: 600; cursor: pointer; margin-top: 1rem; }
     .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px;
             padding: 1rem; margin-bottom: .9rem; }
@@ -28,26 +33,26 @@
     .muted { color: var(--muted); font-size: .88rem; }
     .badge { font-size: .74rem; font-weight: 700; padding: .15rem .5rem; border-radius: 999px;
              text-transform: uppercase; letter-spacing: .3px; }
-    .b-pending-payment { background:#fde68a; color:#78350f; }
-    .b-processing { background:#dbeafe; color:#1e3a8a; }
-    .b-printing { background:#e9d5ff; color:#581c87; }
-    .b-cutting { background:#fbcfe8; color:#831843; }
-    .b-out-for-delivery { background:#bbf7d0; color:#14532d; }
-    .b-ready-for-pickup { background:#bbf7d0; color:#14532d; }
-    .b-shipped { background:#bbf7d0; color:#14532d; }
-    .b-delivered, .b-picked-up { background:#e5e7eb; color:#374151; }
-    .pill { font-size:.74rem; background:#eef2ff; color:#3730a3; padding:.15rem .5rem; border-radius:999px; }
-    .flag { background:#fee2e2; color:#991b1b; font-size:.78rem; padding:.2rem .5rem; border-radius:8px; }
-    .free { background:#dcfce7; color:#166534; font-size:.78rem; padding:.2rem .5rem; border-radius:8px; }
+    .b-pending-payment { background:#4a3a10; color:#fcd34d; }
+    .b-processing { background:#16305c; color:#93c5fd; }
+    .b-printing { background:#3b1d5c; color:#d8b4fe; }
+    .b-cutting { background:#5c1d3f; color:#f9a8d4; }
+    .b-out-for-delivery { background:#14401f; color:#86efac; }
+    .b-ready-for-pickup { background:#14401f; color:#86efac; }
+    .b-shipped { background:#14401f; color:#86efac; }
+    .b-delivered, .b-picked-up { background:#2e313a; color:#c3c7d0; }
+    .pill { font-size:.74rem; background:#23264a; color:#a5b4fc; padding:.15rem .5rem; border-radius:999px; }
+    .flag { background:#4a1717; color:#fca5a5; font-size:.78rem; padding:.2rem .5rem; border-radius:8px; }
+    .free { background:#14401f; color:#86efac; font-size:.78rem; padding:.2rem .5rem; border-radius:8px; }
     .actions { display: flex; gap: .5rem; flex-wrap: wrap; margin-top: .8rem; }
-    .actions button, .actions a { border: 1px solid #ccc; background:#fff; border-radius: 8px;
+    .actions button, .actions a { border: 1px solid var(--line); background: var(--field); border-radius: 8px;
              padding: .5rem .8rem; font: inherit; cursor: pointer; text-decoration: none; color: var(--ink); }
-    .advance { background: #111; color: #fff; border-color: #111; font-weight: 600; }
-    .confirm { background: #166534; color: #fff; border-color: #166534; font-weight: 600; }
+    .advance { background: var(--accent); color: #fff; border-color: var(--accent); font-weight: 600; }
+    .confirm { background: #15803d; color: #fff; border-color: #15803d; font-weight: 600; }
     .hidden { display: none; }
     #status { min-height: 1.2em; margin-bottom: .5rem; }
-    #status.err { color:#b00020; }
-    #status.ok { color:#166534; }
+    #status.err { color:#fca5a5; }
+    #status.ok { color:#86efac; }
   </style>
 </head>
 <body>
@@ -63,9 +68,7 @@
 
     <!-- LOGIN -->
     <section id="login" class="login">
-      <p class="muted">Enter your Worker URL and admin token. Kept only in this tab.</p>
-      <label>Worker base URL</label>
-      <input id="apiBase" placeholder="https://api.pringleprints.ca" />
+      <p class="muted">Enter your admin token. Kept only in this tab.</p>
       <label>Admin token</label>
       <input id="token" type="password" placeholder="your ADMIN_TOKEN" />
       <label class="row" style="font-weight:400;margin-top:.8rem">
@@ -92,15 +95,12 @@
     }
 
     // Session state (this tab only — cleared on close or Lock).
-    let API = sessionStorage.getItem("pp_api") || "";
+    const API = "https://api.pringleprints.ca";
     let TOKEN = sessionStorage.getItem("pp_token") || "";
-    if (API) el("apiBase").value = API;
 
     el("loginBtn").addEventListener("click", async () => {
-      API = el("apiBase").value.trim().replace(/\/$/, "");
       TOKEN = el("token").value.trim();
-      if (!API || !TOKEN) { setStatus("Both fields are required.", "err"); return; }
-      sessionStorage.setItem("pp_api", API);
+      if (!TOKEN) { setStatus("Enter your admin token.", "err"); return; }
       sessionStorage.setItem("pp_token", TOKEN);
       el("loginBtn").disabled = true;
       el("loginBtn").textContent = "Loading…";
@@ -264,7 +264,7 @@
     }
 
     // Auto-load if we still have a token from earlier in this tab session.
-    if (API && TOKEN) load();
+    if (TOKEN) load();
   </script>
 </body>
 </html>
