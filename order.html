@@ -150,11 +150,11 @@
           <label class="field">
             <span class="label-text">Batch size</span>
             <select id="batchSize">
-              <option value="2500" selected>Up to 112 cards — $25</option>
-              <option value="5000">Up to 224 cards — $50</option>
-              <option value="7500">Up to 336 cards — $75</option>
-              <option value="10000">Up to 448 cards — $100</option>
-              <option value="12500">Up to 672 cards — $125 (best value)</option>
+              <option value="2500" data-units="1" selected>Up to 112 cards — $25</option>
+              <option value="5000" data-units="2">Up to 224 cards — $50</option>
+              <option value="7500" data-units="3">Up to 336 cards — $75</option>
+              <option value="10000" data-units="4">Up to 448 cards — $100</option>
+              <option value="12500" data-units="6">Up to 672 cards — $125 (best value)</option>
             </select>
           </label>
 
@@ -162,8 +162,8 @@
             <span class="label-text">Card finish</span>
             <select id="finish">
               <option value="Standard cardstock" data-surcharge="0" selected>Standard cardstock (recommended)</option>
-              <option value="Double-sided glossy laminate" data-surcharge="500">Double-sided glossy laminate (+$5)</option>
-              <option value="Satin front + matte laminate back" data-surcharge="500">Satin front + matte laminate back (+$5)</option>
+              <option value="Double-sided glossy laminate" data-surcharge="500">Double-sided glossy laminate (+$5 per 112 cards)</option>
+              <option value="Satin front + matte laminate back" data-surcharge="500">Satin front + matte laminate back (+$5 per 112 cards)</option>
             </select>
           </label>
 
@@ -327,14 +327,21 @@
     return COUPON ? Math.min(COUPON.amountCents, baseCents()) : 0;
   }
 
+  // A finish is priced per batch of the smallest tier, so say which that is
+  // rather than quoting a figure the total will not match.
+  function unitLabel() {
+    const single = (CFG.batchTiers || []).find((t) => (t.units || 1) === 1);
+    return single && single.cards ? ` per ${single.cards} cards` : " per batch";
+  }
+
   function renderPrices() {
     if (Array.isArray(CFG.batchTiers) && CFG.batchTiers.length) {
       $("batchSize").innerHTML = CFG.batchTiers.map((t, i) =>
-        `<option value="${t.cents}" data-id="${t.id}"${i === 0 ? " selected" : ""}>${t.label} — ${money(t.cents)}${t.note ? ` (${t.note})` : ""}</option>`).join("");
+        `<option value="${t.cents}" data-id="${t.id}" data-units="${t.units || 1}"${i === 0 ? " selected" : ""}>${t.label} — ${money(t.cents)}${t.note ? ` (${t.note})` : ""}</option>`).join("");
     }
     if (Array.isArray(CFG.finishes) && CFG.finishes.length) {
       $("finish").innerHTML = CFG.finishes.map((f, i) =>
-        `<option value="${f.label}" data-id="${f.id}" data-surcharge="${f.cents}"${i === 0 ? " selected" : ""}>${f.label}${f.cents ? ` (+${money(f.cents)})` : ""}${f.note ? ` (${f.note})` : ""}</option>`).join("");
+        `<option value="${f.label}" data-id="${f.id}" data-surcharge="${f.cents}"${i === 0 ? " selected" : ""}>${f.label}${f.cents ? ` (+${money(f.cents)}${unitLabel()})` : ""}${f.note ? ` (${f.note})` : ""}</option>`).join("");
     }
   }
 
@@ -356,9 +363,11 @@
   }
 
   function baseCents() {
-    const batchCents = parseInt($("batchSize").value, 10) || 0;
+    const batch = $("batchSize").selectedOptions[0];
+    const batchCents = parseInt(batch.value, 10) || 0;
+    const units = parseInt(batch.dataset.units || "1", 10) || 1;
     const surcharge = parseInt($("finish").selectedOptions[0].dataset.surcharge || "0", 10);
-    return batchCents + surcharge;
+    return batchCents + surcharge * units;
   }
 
   function chosenMethod() {
