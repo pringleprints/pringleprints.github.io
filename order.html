@@ -81,6 +81,13 @@
   .file-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; }
   .file-remove { background: none; border: none; color: var(--ink-soft); font-weight: 700; padding: 2px 6px; cursor: pointer; font-size: 14px; }
   .file-remove:hover { background: none; color: var(--magenta); }
+  .file-item { flex-wrap: wrap; }
+  .file-state { font-family: var(--mono); font-size: 11px; letter-spacing: .04em; color: var(--ink-soft); flex-shrink: 0; }
+  .file-state.done { color: var(--ink); }
+  .file-state.failed { color: var(--danger); }
+  .file-bar { flex-basis: 100%; height: 4px; background: var(--rule); border-radius: 2px; overflow: hidden; }
+  .file-bar > i { display: block; height: 100%; background: var(--magenta); width: 0; transition: width .2s linear; }
+  .file-retry { background: none; border: none; color: var(--magenta); font-size: 12px; text-decoration: underline; cursor: pointer; padding: 2px 4px; flex-shrink: 0; }
 
   .methods { display: grid; gap: 10px; }
   .method { display: flex; gap: .7rem; align-items: flex-start; border: 1.5px solid var(--rule); border-radius: 9px; padding: 13px 14px; cursor: pointer; }
@@ -644,19 +651,113 @@
     fileInputFor(kind).files = dt.files;
   }
 
+  // A print file is far larger than the Worker will accept as a request body,
+  // so the bytes go straight to R2 on a short-lived signed URL and only the
+  // key travels with the order. XMLHttpRequest rather than fetch because it is
+  // the only one that reports upload progress, and a multi-gigabyte upload
+  // with no progress is indistinguishable from a hang.
+  const UPLOADS = { pdf: null, xml: null };
+
+  function stateLabel(rec) {
+    if (!rec) return "";
+    if (rec.state === "uploading") return `uploading ${rec.pct}%`;
+    if (rec.state === "done") return "uploaded";
+    if (rec.state === "failed") return rec.note || "upload failed";
+    if (rec.state === "inline") return "will send with the order";
+    return "";
+  }
+
   function renderFileList() {
     const items = [];
     const pdf = currentFile("pdf");
     const xml = currentFile("xml");
     if (pdf) items.push({ kind: "pdf", name: pdf.name });
     if (xml) items.push({ kind: "xml", name: xml.name });
-    $("fileList").innerHTML = items.map((it) =>
-      `<li class="file-item" data-kind="${it.kind}">` +
-      `<span class="file-ext">${it.kind.toUpperCase()}</span>` +
-      `<span class="file-name">${escapeHtml(it.name)}</span>` +
-      `<button type="button" class="file-remove" data-kind="${it.kind}" aria-label="Remove ${it.kind.toUpperCase()} file">&times;</button>` +
-      `</li>`
-    ).join("");
+    $("fileList").innerHTML = items.map((it) => {
+      const rec = UPLOADS[it.kind];
+      const cls = rec ? rec.state : "";
+      const retry = rec && rec.state === "failed"
+        ? `<button type="button" class="file-retry" data-kind="${it.kind}">Retry</button>` : "";
+      const bar = rec && rec.state === "uploading"
+        ? `<span class="file-bar"><i style="width:${rec.pct}%"></i></span>` : "";
+      return `<li class="file-item" data-kind="${it.kind}">` +
+        `<span class="file-ext">${it.kind.toUpperCase()}</span>` +
+        `<span class="file-name">${escapeHtml(it.name)}</span>` +
+        `<span class="file-state ${cls}">${escapeHtml(stateLabel(rec))}</span>` +
+        retry +
+        `<button type="button" class="file-remove" data-kind="${it.kind}" aria-label="Remove ${it.kind.toUpperCase()} file">&times;</button>` +
+        bar +
+        `</li>`;
+    }).join("");
+  }
+
+  // Repainting only the moving parts, because rebuilding the list on every
+  // progress event would tear the button the customer might be reaching for.
+  function paintProgress(kind) {
+    const li = $("fileList").querySelector(`.file-item[data-kind="${kind}"]`);
+    const rec = UPLOADS[kind];
+    if (!li || !rec) return;
+    const state = li.querySelector(".file-state");
+    const fill = li.querySelector(".file-bar > i");
+    if (state) state.textContent = stateLabel(rec);
+    if (fill) fill.style.width = rec.pct + "%";
+  }
+
+  async function startUpload(kind, file) {
+    const rec = { file, state: "uploading", pct: 0, key: "", note: "" };
+    UPLOADS[kind] = rec;
+    renderFileList();
+    let grant;
+    try {
+      const res = await fetch(API_BASE + "/upload/start", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          size: file.size,
+          contentType: file.type || "application/octet-stream",
+          filename: file.name
+        })
+      });
+      grant = await res.json();
+      if (!res.ok) throw new Error(grant.error || "the upload could not be started");
+    } catch (err) {
+      // A small file still travels fine inside the form, so losing this route
+      // only actually costs the large ones it exists to carry.
+      rec.state = "inline";
+      rec.note = err.message;
+      renderFileList();
+      return;
+    }
+    rec.promise = new Promise((resolve) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open("PUT", grant.url, true);
+      xhr.setRequestHeader("content-type", file.type || "application/octet-stream");
+      xhr.upload.addEventListener("progress", (ev) => {
+        if (!ev.lengthComputable) return;
+        rec.pct = Math.round((ev.loaded / ev.total) * 100);
+        paintProgress(kind);
+      });
+      xhr.addEventListener("load", () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          rec.state = "done";
+          rec.key = grant.key;
+          rec.pct = 100;
+        } else {
+          rec.state = "failed";
+          rec.note = `upload refused (${xhr.status})`;
+        }
+        renderFileList();
+        resolve();
+      });
+      xhr.addEventListener("error", () => {
+        rec.state = "failed";
+        rec.note = "the connection dropped";
+        renderFileList();
+        resolve();
+      });
+      xhr.send(file);
+    });
+    await rec.promise;
   }
 
   function showFileMessage(lines, isErr) {
@@ -683,6 +784,7 @@
         notices.push(`Replaced the previous ${ext.toUpperCase()} file with "${file.name}".`);
       }
       setFileFor(ext, file);
+      startUpload(ext, file);
     }
     renderFileList();
     showFileMessage(errs.length ? errs : notices, errs.length > 0);
@@ -713,9 +815,16 @@
     filePicker.value = ""; // allow re-selecting the same file later
   });
   $("fileList").addEventListener("click", (e) => {
+    const retry = e.target.closest(".file-retry");
+    if (retry) {
+      const file = currentFile(retry.dataset.kind);
+      if (file) startUpload(retry.dataset.kind, file);
+      return;
+    }
     const btn = e.target.closest(".file-remove");
     if (!btn) return;
     setFileFor(btn.dataset.kind, null);
+    UPLOADS[btn.dataset.kind] = null;
     renderFileList();
   });
 
@@ -752,7 +861,25 @@
     msg.textContent = "Creating your order…";
     submitBtn.disabled = true;
 
+    // Submitting mid-upload would send the bytes a second time, through the
+    // very limit the direct upload exists to avoid, so the order waits for the
+    // file rather than racing it.
+    const inFlight = ["pdf", "xml"].map((k) => UPLOADS[k]).filter((r) => r && r.state === "uploading");
+    if (inFlight.length) {
+      msg.textContent = "Waiting for your file to finish uploading…";
+      await Promise.all(inFlight.map((r) => r.promise));
+    }
+
     const fd = new FormData($("orderForm"));
+    for (const kind of ["pdf", "xml"]) {
+      const rec = UPLOADS[kind];
+      if (rec && rec.state === "done") {
+        fd.delete(kind);
+        fd.append("fileKey", rec.key);
+        fd.append("fileField", kind);
+        fd.append("fileName", rec.file.name);
+      }
+    }
     const batchLabel = $("batchSize").selectedOptions[0].textContent;
     const finishLabel = $("finish").selectedOptions[0].textContent;
     const notes = (fd.get("details") || "").trim();
