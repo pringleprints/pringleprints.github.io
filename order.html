@@ -133,7 +133,7 @@
   <div class="page-head">
     <p class="eyebrow">Place an order</p>
     <h1>Order form</h1>
-    <p class="lede">Pay securely by card, or use Interac e-Transfer at checkout — just paste your order number into the transfer message so we can match it automatically.</p>
+    <p class="lede">Pay securely by card, or use Interac e-Transfer at checkout — just paste your order number into the transfer message so we can match it automatically. Prices shown include tax.</p>
   </div>
 
   <div class="checkout">
@@ -290,6 +290,7 @@
       CFG = { methods: ["pickup", "delivery", "mail"], fees: { pickup: 0, delivery: 0, mail: 1500 },
                freeDeliveryOverCents: 0, minOrderCents: 0 };
     }
+    applyShopState();
     renderPrices();
     await loadCoupon();
     renderMethods();
@@ -368,6 +369,21 @@
   function unitLabel() {
     const single = (CFG.batchTiers || []).find((t) => (t.units || 1) === 1);
     return single && single.cards ? ` per ${single.cards} cards` : " per batch";
+  }
+
+  // Better to say so at the top than to let someone choose a batch, attach a
+  // file and pick a payment method before being turned away.
+  function applyShopState() {
+    if (CFG.shopOpen !== false) return;
+    const banner = document.createElement("div");
+    banner.className = "card";
+    banner.style.cssText = "border-color:var(--magenta);margin-bottom:18px";
+    const when = CFG.reopensAt ? ` We reopen ${CFG.reopensAt}.` : "";
+    banner.innerHTML = `<b>We're not taking orders right now.</b><br>` +
+      `<span class="hint">${CFG.shopMessage || "Check back shortly — or email us and we'll let you know when we're open."}${when}</span>`;
+    const form = $("orderForm");
+    form.parentNode.insertBefore(banner, form);
+    form.querySelectorAll("input, select, textarea, button").forEach((el) => { el.disabled = true; });
   }
 
   function renderPrices() {
