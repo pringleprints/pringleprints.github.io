@@ -2506,6 +2506,8 @@ var qrcode = function() {
         b.addEventListener("click", () => advance(b.dataset.advance, b.dataset.next || null, b.dataset.method, b.dataset.next || null)));
       list.querySelectorAll("[data-jump]").forEach((s) =>
         s.addEventListener("change", () => advance(s.dataset.jump, s.value, s.dataset.method, s.value)));
+      list.querySelectorAll("[data-markpaid]").forEach((b) =>
+        b.addEventListener("click", () => markPaid(b.dataset.markpaid, b.dataset.intent)));
       list.querySelectorAll("[data-cancel]").forEach((b) =>
         b.addEventListener("click", () => cancelOrder(b.dataset.cancel, !!b.dataset.paid)));
       list.querySelectorAll("[data-file]").forEach((a) =>
@@ -2621,13 +2623,35 @@ var qrcode = function() {
         <div class="row" style="margin-top:.4rem">${pay} ${files}</div>
         <div class="actions">${o.status === "cancelled" ? "" : `${advanceBtn} ${jump}`}
           ${o.status === "cancelled" ? `<span class="muted">cancelled${o.refundedAt ? " · refunded" : ""}</span>`
-            : `<button class="danger" data-cancel="${o.id}" data-paid="${o.paid ? "1" : ""}">Cancel</button>`}</div>
+            : `${o.paid ? "" : `<button class="confirm" data-markpaid="${o.id}" data-intent="${o.paymentIntent || ""}">Mark paid</button>`}
+               <button class="danger" data-cancel="${o.id}" data-paid="${o.paid ? "1" : ""}">Cancel</button>`}</div>
       </div>`;
     }
 
     // Refunding is asked separately from cancelling, because they are
     // different decisions: an order can be called off without money moving,
     // and money can only move back if it was taken in the first place.
+    // Cash and anything else settled in person have no webhook and no deposit
+    // notice to match, so this is the only thing that can confirm it arrived.
+    async function markPaid(orderId, intent) {
+      const how = prompt("How was it paid? (cash, etransfer, card, other)", intent || "cash");
+      if (!how) return;
+      setStatus("Recording payment…");
+      try {
+        const res = await fetch(`${API}/admin/mark-paid`, {
+          method: "POST",
+          headers: { ...auth(), "content-type": "application/json" },
+          body: JSON.stringify({ orderId, method: how.trim().toLowerCase() }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Could not record that payment.");
+        setStatus(`${orderId} marked paid by ${data.paymentMethod}. It is now ${data.status}.`, "ok");
+        await load();
+      } catch (e) {
+        setStatus(e.message || "Could not record that payment.", "err");
+      }
+    }
+
     async function cancelOrder(orderId, paid) {
       if (!confirm(`Cancel ${orderId}? The customer will be emailed.`)) return;
       const refund = paid ? confirm("Also refund the payment?\n\nCard payments go back through Helcim. Anything else has to be returned by hand.") : false;
