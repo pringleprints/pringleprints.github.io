@@ -219,7 +219,7 @@
       <thead>
         <tr><th scope="col">Batch size</th><th scope="col">Price (CAD)</th></tr>
       </thead>
-      <tbody>
+      <tbody id="priceRows">
         <tr><td>Up to 112 cards</td><td class="price">$25</td></tr>
         <tr><td>Up to 224 cards</td><td class="price">$50</td></tr>
         <tr><td>Up to 336 cards</td><td class="price">$75</td></tr>
@@ -227,7 +227,7 @@
         <tr class="value"><td>Up to 672 cards<span class="tag">best value</span></td><td class="price">$125</td></tr>
       </tbody>
     </table>
-    <p class="footnote">Finishes: standard cardstock is included and recommended. Double-sided glossy laminate or satin front with matte laminate back adds $5 per batch. Prices include tax.</p>
+    <p class="footnote" id="priceFootnote">Finishes: standard cardstock is included and recommended. Double-sided glossy laminate or satin front with matte laminate back adds $5 per batch. Prices include tax.</p>
   </section>
 
   <section class="sheet" aria-labelledby="specs-h">
@@ -271,5 +271,37 @@
   Pringle Prints · orders@pringleprints.ca · printed &amp; cut in Ottawa–Gatineau, Canada
 </footer>
 
+<script>
+  // Prices are published by the order API so they live in one place rather
+  // than being typed here as well and drifting apart. The rows written above
+  // stand until it answers, so a page served without the API reachable shows
+  // the current prices rather than an empty table.
+  (async () => {
+    const money = (cents) => "$" + (cents % 100 === 0 ? cents / 100 : (cents / 100).toFixed(2));
+    let cfg;
+    try {
+      cfg = await (await fetch("https://api.pringleprints.ca/config")).json();
+    } catch {
+      return;
+    }
+    const tiers = cfg.batchTiers || [];
+    if (tiers.length) {
+      document.getElementById("priceRows").innerHTML = tiers.map((t) =>
+        `<tr${t.note ? ' class="value"' : ""}><td>${t.label}${t.note ? `<span class="tag">${t.note}</span>` : ""}</td>` +
+        `<td class="price">${money(t.cents)}</td></tr>`).join("");
+    }
+    // A finish is charged per batch of the smallest tier, so name that size
+    // rather than saying "per batch" and leaving people to guess what one is.
+    const charged = (cfg.finishes || []).filter((f) => f.cents > 0);
+    const single = tiers.find((t) => (t.units || 1) === 1);
+    if (charged.length) {
+      const unit = single && single.cards ? `per ${single.cards} cards` : "per batch";
+      document.getElementById("priceFootnote").textContent =
+        `Finishes: standard cardstock is included and recommended. ` +
+        `Double-sided glossy laminate or satin front with matte laminate back adds ${money(charged[0].cents)} ${unit}. ` +
+        `Prices include tax.`;
+    }
+  })();
+</script>
 </body>
 </html>
