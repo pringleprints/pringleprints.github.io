@@ -217,6 +217,10 @@
               <input type="radio" name="paymentMethod" value="etransfer">
               <span><b>Interac e-Transfer</b><br><small>We'll show you where to send it</small></span>
             </label>
+            <label class="method hidden" id="cashOption">
+              <input type="radio" name="paymentMethod" value="cash">
+              <span><b>Cash</b><br><small>Pay when you collect</small></span>
+            </label>
           </div>
         </div>
         <div class="actions">
@@ -295,6 +299,7 @@
     await loadCoupon();
     renderMethods();
     recalc();
+    syncCashOption();
 
   })();
 
@@ -440,8 +445,21 @@
     });
   }
 
+  // Cash only makes sense where you and the customer are in the same room.
+  // Offering it on a mail order would mean posting the cards and hoping.
+  function syncCashOption() {
+    const allowed = chosenMethod() === "pickup" || chosenMethod() === "delivery";
+    const option = $("cashOption");
+    option.classList.toggle("hidden", !allowed);
+    const radio = option.querySelector("input");
+    radio.disabled = !allowed;
+    if (!allowed && radio.checked)
+      document.querySelector('input[name="paymentMethod"][value="card"]').checked = true;
+  }
+
   function onMethodChange() {
     const m = chosenMethod();
+    syncCashOption();
     const needsAddr = m === "delivery" || m === "mail";
     $("addressWrap").classList.toggle("hidden", !needsAddr);
     $("addressLabel").textContent = m === "mail" ? "Mailing address" : "Delivery address";
@@ -776,6 +794,15 @@
       msg.className = "hint";
       msg.textContent = "Your coupon has been applied — there's still a balance, so choose card or e-Transfer.";
       submitBtn.disabled = false;
+      return;
+    }
+
+    if (data.paymentMethod === "cash") {
+      msg.className = "ok";
+      msg.innerHTML = `Order <b>${data.orderId}</b> is in. Nothing to pay now —
+                       we'll take ${money(data.totalCents)} in cash when you collect.
+                       <a href="${statusUrl}">Track it here.</a>`;
+      submitBtn.textContent = "Order placed";
       return;
     }
 
