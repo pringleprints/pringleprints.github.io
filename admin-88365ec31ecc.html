@@ -83,6 +83,19 @@
     <!-- LIST -->
     <section id="list" class="hidden"></section>
 
+    <!-- SHOP -->
+    <section id="shop" class="hidden">
+      <div class="card">
+        <div class="row">
+          <b>Shop</b>
+          <span id="shopState" class="badge" style="margin-left:.4rem"></span>
+          <button id="shopToggle" style="margin-left:auto">Loading…</button>
+        </div>
+        <input id="shopMessage" placeholder="What customers see while you're closed" style="margin-top:.6rem" />
+        <input id="shopReopens" placeholder="Reopening date, e.g. 9 September (optional)" style="margin-top:.5rem" />
+      </div>
+    </section>
+
     <!-- COUPONS -->
     <section id="coupons" class="hidden">
       <div class="card">
@@ -2486,6 +2499,8 @@ var qrcode = function() {
       }
       el("login").classList.add("hidden");
       el("coupons").classList.remove("hidden");
+      el("shop").classList.remove("hidden");
+      loadShop();
       loadCoupons();
       el("list").classList.remove("hidden");
       el("refreshBtn").classList.remove("hidden");
@@ -2537,6 +2552,55 @@ var qrcode = function() {
         </div>
       </div>`;
     }
+
+    let SHOP_OPEN = true;
+
+    function paintShop() {
+      el("shopState").textContent = SHOP_OPEN ? "open" : "closed";
+      el("shopState").className = `badge ${SHOP_OPEN ? "b-processing" : "b-cancelled"}`;
+      el("shopToggle").textContent = SHOP_OPEN ? "Close the shop" : "Reopen the shop";
+      el("shopToggle").className = SHOP_OPEN ? "danger" : "advance";
+    }
+
+    async function loadShop() {
+      try {
+        const res = await fetch(`${API}/admin/shop`, { headers: auth() });
+        if (!res.ok) return;
+        const data = await res.json();
+        SHOP_OPEN = data.open !== false;
+        el("shopMessage").value = data.message || "";
+        el("shopReopens").value = data.reopensAt || "";
+        paintShop();
+      } catch {
+        // The shop switch failing to load must not hide the orders.
+      }
+    }
+
+    // Closing is asked about, because doing it by accident means turning
+    // customers away without noticing.
+    async function toggleShop() {
+      const next = !SHOP_OPEN;
+      if (!next && !confirm("Close the shop? Customers will not be able to order until you reopen.")) return;
+      el("shopToggle").disabled = true;
+      try {
+        const res = await fetch(`${API}/admin/shop`, {
+          method: "POST",
+          headers: { ...auth(), "content-type": "application/json" },
+          body: JSON.stringify({ open: next, message: el("shopMessage").value.trim(), reopensAt: el("shopReopens").value.trim() }),
+        });
+        if (!res.ok) throw new Error("Could not change that.");
+        const data = await res.json();
+        SHOP_OPEN = data.open !== false;
+        paintShop();
+        setStatus(SHOP_OPEN ? "The shop is open." : "The shop is closed — no new orders will be taken.", "ok");
+      } catch (e) {
+        setStatus(e.message || "Could not change that.", "err");
+      } finally {
+        el("shopToggle").disabled = false;
+      }
+    }
+
+    el("shopToggle").addEventListener("click", toggleShop);
 
     async function issueCoupon() {
       const btn = el("issueBtn");
