@@ -227,7 +227,7 @@
         <tr class="value"><td>Up to 672 cards<span class="tag">best value</span></td><td class="price">$125</td></tr>
       </tbody>
     </table>
-    <p class="footnote" id="priceFootnote">Finishes: standard cardstock is included and recommended. Double-sided glossy laminate or satin front with matte laminate back adds $5 per batch. Foil the entire order adds $5 per batch. Clear deckboxes are $5 each. Prices include tax.</p>
+    <p class="footnote" id="priceFootnote">Finishes: standard cardstock is included and recommended. Double-sided glossy laminate or satin front with matte laminate back adds $5 per batch. Foil the entire order adds $5 per 112 cards. Clear deckboxes are $5 each. Prices include tax.</p>
   </section>
 
   <section class="sheet" aria-labelledby="specs-h">
@@ -299,10 +299,16 @@
     if (charged.length) {
       parts.push(`Double-sided glossy laminate or satin front with matte laminate back adds ${money(charged[0].cents)} ${unit}.`);
     }
-    // Add-ons are advertised by /config only when the API has prices for them,
-    // so the footnote names the real figures rather than hardcoding dollars.
+    // Foil is a finish (mutually exclusive with the others), so it is pulled
+    // from cfg.finishes rather than cfg.addOns — guard against it being absent
+    // so we never render money(undefined). Clear deckboxes are the only add-on,
+    // priced per box. Either can be missing on an API that predates it.
+    const foil = (cfg.finishes || []).find((f) => f.id === "foil");
+    if (foil) {
+      parts.push(`Foil the entire order adds ${money(foil.cents)} ${unit}.`);
+    }
     if (cfg.addOns) {
-      parts.push(`Foil the entire order adds ${money(cfg.addOns.foilPerBatchCents)} per batch. Clear deckboxes are ${money(cfg.addOns.deckboxCents)} each.`);
+      parts.push(`Clear deckboxes are ${money(cfg.addOns.deckboxCents)} each.`);
     }
     parts.push("Prices include tax.");
     document.getElementById("priceFootnote").textContent = parts.join(" ");

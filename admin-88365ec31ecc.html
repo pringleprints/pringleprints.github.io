@@ -2682,7 +2682,6 @@ var qrcode = function() {
         ? `<button class="confirm" data-advance="${o.id}" data-method="${o.fulfillment}" data-next="${next || ""}">Confirm payment & start</button>`
         : next ? `<button class="advance" data-advance="${o.id}" data-method="${o.fulfillment}" data-next="${next}">→ ${next}</button>` : "";
       const addOns = [];
-      if (o.foil === true || o.foil === "true") addOns.push("foil");
       const boxes = Number(o.deckboxes || 0);
       if (boxes > 0) addOns.push(`${boxes} deckbox${boxes === 1 ? "" : "s"}`);
       const addOnsText = addOns.length ? " · " + addOns.join(" · ") : "";

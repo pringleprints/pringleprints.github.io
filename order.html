@@ -171,6 +171,7 @@
               <option value="Standard cardstock" data-surcharge="0" selected>Standard cardstock (recommended)</option>
               <option value="Double-sided glossy laminate" data-surcharge="500">Double-sided glossy laminate (+$5 per 112 cards)</option>
               <option value="Satin front + matte laminate back" data-surcharge="500">Satin front + matte laminate back (+$5 per 112 cards)</option>
+              <option value="Foil the entire order" data-id="foil" data-surcharge="500">Foil the entire order (+$5 per 112 cards)</option>
             </select>
           </label>
 
@@ -201,13 +202,8 @@
       </section>
 
       <section class="card" id="extrasCard" aria-labelledby="stepExtras" hidden>
-        <h2 class="card-title" id="stepExtras"><span class="step-num" aria-hidden="true">3</span>Extras</h2>
+        <h2 class="card-title" id="stepExtras"><span class="step-num" aria-hidden="true">3</span>Deckboxes</h2>
         <div class="field-group">
-          <label class="field">
-            <span class="label-text">Foil the entire order</span>
-            <input type="checkbox" id="foil">
-            <span class="hint" id="foilNote"></span>
-          </label>
           <label class="field">
             <span class="label-text">Clear deckboxes</span>
             <input type="number" id="deckboxes" min="0" max="99" step="1" value="0">
@@ -380,10 +376,9 @@
   });
 
   // The Extras section is invisible until /config advertises add-ons, but the
-  // controls always exist in the markup, so bind them here. Every reader of
-  // their values guards on CFG.addOns, so an older API that never showed the
-  // section can never have its values sent.
-  $("foil").addEventListener("change", recalc);
+  // control still exists in the markup, so bind it here. Every reader of its
+  // value guards on CFG.addOns, so an older API that never showed the section
+  // can never have its value sent.
   $("deckboxes").addEventListener("input", () => {
     const input = $("deckboxes");
     let n = parseInt(input.value, 10);
@@ -454,13 +449,6 @@
     return batchCents + surcharge * units;
   }
 
-  // How many batches the chosen tier counts as — foil is charged per batch, so
-  // the total scales with this. Never below one: the smallest tier is one batch.
-  function chosenUnits() {
-    const units = parseInt($("batchSize").selectedOptions[0].dataset.units || "1", 10);
-    return isNaN(units) || units < 1 ? 1 : units;
-  }
-
   // The deckbox count is clamped both by the input handler and here so a value
   // read at any moment (recalc, submit) is always a whole number in 0–99.
   function deckboxCount() {
@@ -468,28 +456,19 @@
     return isNaN(n) ? 0 : Math.max(0, Math.min(99, n));
   }
 
-  // Add-ons are layered on top of the print subtotal, never discounted by it,
-  // so a coupon (which only ever trims baseCents()) never reduces them.
+  // Deckboxes are the only add-on, so they are the only thing layered on top of
+  // the print subtotal. baseCents() already folds in any finish surcharge, so a
+  // foil finish is counted there — a coupon (which only ever trims baseCents())
+  // therefore never reduces the deckbox total.
   function addOnsCents() {
     if (!CFG.addOns) return 0;
-    let total = 0;
-    if ($("foil").checked) total += CFG.addOns.foilPerBatchCents * chosenUnits();
-    const boxes = deckboxCount();
-    if (boxes > 0) total += boxes * CFG.addOns.deckboxCents;
-    return total;
+    return deckboxCount() * CFG.addOns.deckboxCents;
   }
 
-  // Keep the two inline notes in sync with the current choice and batch every
-  // time the order changes, so the figure shown always matches the total.
+  // Keep the deckbox note in sync with the current count every time the order
+  // changes, so the figure shown always matches the total.
   function syncExtrasNotes() {
     if (!CFG.addOns) return;
-    const units = chosenUnits();
-    if ($("foil").checked) {
-      const cost = CFG.addOns.foilPerBatchCents * units;
-      $("foilNote").textContent = `+${money(cost)} for ${units === 1 ? "batch" : "batches"}`;
-    } else {
-      $("foilNote").textContent = "";
-    }
     const boxes = deckboxCount();
     if (boxes > 0) {
       const cost = boxes * CFG.addOns.deckboxCents;
@@ -558,9 +537,6 @@
     const finishLabel = $("finish").selectedOptions[0].textContent;
     const extrasLines = [];
     if (CFG.addOns) {
-      if ($("foil").checked) {
-        extrasLines.push(`<div class="summary-line"><span>Foil</span><b>${money(CFG.addOns.foilPerBatchCents * chosenUnits())}</b></div>`);
-      }
       const boxes = deckboxCount();
       if (boxes > 0) {
         extrasLines.push(`<div class="summary-line"><span>${boxes} clear deckboxes</span><b>${money(boxes * CFG.addOns.deckboxCents)}</b></div>`);
@@ -1060,7 +1036,6 @@
     const notes = (fd.get("details") || "").trim();
     const extrasSummary = [];
     if (CFG.addOns) {
-      if ($("foil").checked) extrasSummary.push("Foil");
       const boxes = deckboxCount();
       if (boxes > 0) extrasSummary.push(`${boxes} clear deckboxes`);
     }
@@ -1069,7 +1044,6 @@
       (extrasSummary.length ? `\nExtras: ${extrasSummary.join(", ")}` : ""));
     fd.set("amountCents", String(baseCents() + addOnsCents()));
     if (CFG.addOns) {
-      fd.set("foil", $("foil").checked ? "true" : "false");
       fd.set("deckboxes", String(deckboxCount()));
     }
     if (COUPON) fd.set("couponCode", COUPON.code);
