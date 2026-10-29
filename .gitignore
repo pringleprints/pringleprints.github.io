@@ -1,1 +1,13 @@
 CLAUDE.md
+
+# Local agent / orchestration state — never publish
+.omo/
+.opencode/
+AGENTS.md
+*.log
+.dev.vars
+.env
+.env.*
+
+# Internal engineering notes (kept outside this public repo)
+KNOWN-ISSUES.md

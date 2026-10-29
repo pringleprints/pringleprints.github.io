@@ -123,29 +123,36 @@
       const done = seen.has(s);
       const h = historyAt(s);
       return `<li class="${done ? "done" : ""}">
-        <div class="stage">${s.replace(/-/g, " ")}</div>
-        ${h ? `<div class="when">${when(h.at)}</div>` : ""}
+        <div class="stage">${escapeHtml(s).replace(/-/g, " ")}</div>
+        ${h ? `<div class="when">${escapeHtml(when(h.at))}</div>` : ""}
       </li>`;
     }).join("");
 
     const meetup = o.fulfillment === "pickup" && o.status === "ready-for-pickup" && o.pickupLocation
       ? `<div class="meetup">📍 Meet at: ${escapeHtml(o.pickupLocation)}</div>` : "";
 
-    const payNote = !o.paid
-      ? `<div class="meetup">Still need to pay? Paste your order number into an Interac e-Transfer message.
-           <button type="button" id="copyOrderBtn" style="margin-left:8px;padding:4px 10px;font-size:14px">Copy for e-Transfer</button>
+    // Awaiting-payment copy is only for an unpaid, not-yet-cancelled order; a
+    // cancelled one gets its own note instead.
+    const payNote = !o.paid && o.status !== "cancelled"
+      ? `<div class="meetup">This order is awaiting payment. Paying by Interac e-Transfer? Put the order number above in the message. Paying in cash? Bring it when you collect.
+        <button type="button" id="copyOrderBtn" style="margin-left:8px;padding:4px 10px;font-size:14px">Copy order number</button>
          </div>` : "";
+    const cancelledNote = o.status === "cancelled"
+      ? `<div class="meetup">This order was cancelled. If that is unexpected, reply to your confirmation email.</div>` : "";
 
     el("result").innerHTML = `
-      <div class="order-id">${o.orderId}</div>
-      <div class="badge">${o.status.replace(/-/g, " ")}</div>
+      <div class="order-id">${escapeHtml(o.orderId)}</div>
+      <div class="badge">${escapeHtml(o.status).replace(/-/g, " ")}</div>
       <ol class="trail">${trail}</ol>
       ${meetup}
       ${payNote}
+      ${cancelledNote}
     `;
     el("result").classList.remove("hidden");
 
-    if (!o.paid) {
+    // The copy button only renders for an unpaid, non-cancelled order, so guard
+    // the binding to avoid dereferencing null.
+    if (!o.paid && o.status !== "cancelled") {
       bindCopyButton(el("copyOrderBtn"), () => o.orderId);
     }
   }
