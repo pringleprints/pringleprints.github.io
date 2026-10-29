@@ -333,7 +333,6 @@
     if (data.valid) {
       COUPON = { code: trimmed, amountCents: data.amountCents };
       note.textContent = `${money(data.amountCents)} coupon applied.`;
-      renderPaymentOptions();
     } else {
       COUPON = null;
       note.textContent = data.message || "That coupon can't be used.";
@@ -351,18 +350,9 @@
     await applyCoupon(code);
   }
 
-  // The coupon is offered as a way to pay, and picked for them — someone who
-  // scanned a code came here to spend it.
-  function renderPaymentOptions() {
-    if (!COUPON) return;
-    const wrap = $("payMethods");
-    if (wrap.querySelector('input[value="coupon"]')) return;
-    const label = document.createElement("label");
-    label.className = "method";
-    label.innerHTML = `<input type="radio" name="paymentMethod" value="coupon" checked>
-      <span><b>Coupon</b><br><small>${money(COUPON.amountCents)} off — code ${COUPON.code}</small></span>`;
-    wrap.prepend(label);
-  }
+  // The coupon is a discount on the order, never a payment method, so it never
+  // changes how the customer pays — the card/e-Transfer/cash pick above is
+  // left exactly as it was.
 
   $("couponApply").addEventListener("click", () => applyCoupon($("couponInput").value));
   $("couponInput").addEventListener("keydown", (e) => {
@@ -486,11 +476,11 @@
     $("total").innerHTML =
       `<div class="summary-line"><span>${batchLabel}</span></div>` +
       `<div class="summary-line"><span>${finishLabel}</span></div>` +
-      `<div class="summary-line"><span>${labels[method]}</span><b>${fee === 0 ? "Free" : money(fee)}</b></div>` +
+      `<div class="summary-line"><span>${labels[method] || method}</span><b>${fee === 0 ? "Free" : money(fee)}</b></div>` +
       (discount ? `<div class="summary-line"><span>Coupon</span><b>-${money(discount)}</b></div>` : "") +
       `<div class="summary-total"><span>Total</span><span>${money(total)}</span></div>`;
     $("summaryToggleTotal").textContent = money(total);
-    $("methodTriggerText").textContent = labels[method];
+    $("methodTriggerText").textContent = labels[method] || method;
     $("methodTriggerFee").textContent = fee === 0 ? "Free" : money(fee);
   }
 
@@ -703,10 +693,18 @@
     if (fill) fill.style.width = rec.pct + "%";
   }
 
-  async function startUpload(kind, file) {
+  // rec.promise is assigned synchronously, before the first await, so a submit
+  // that lands while /upload/start is still pending always has a promise to
+  // await — never an "uploading" record whose .promise is still undefined.
+  function startUpload(kind, file) {
     const rec = { file, state: "uploading", pct: 0, key: "", note: "" };
     UPLOADS[kind] = rec;
     renderFileList();
+    rec.promise = runUpload(kind, rec, file);
+    return rec.promise;
+  }
+
+  async function runUpload(kind, rec, file) {
     let grant;
     try {
       const res = await fetch(API_BASE + "/upload/start", {
@@ -721,10 +719,17 @@
       grant = await res.json();
       if (!res.ok) throw new Error(grant.error || "the upload could not be started");
     } catch (err) {
-      // A small file still travels fine inside the form, so losing this route
-      // only actually costs the large ones it exists to carry.
-      rec.state = "inline";
-      rec.note = err.message;
+      // A file over the hard cap can never travel with the order, so it fails
+      // loudly rather than being silently downgraded to inline. A smaller file
+      // still travels fine inside the form, so this fallback only actually
+      // costs the large ones the direct upload exists to carry.
+      if (file.size > 90 * 1024 * 1024) {
+        rec.state = "failed";
+        rec.note = "too large to send with the order — retry the upload or email us";
+      } else {
+        rec.state = "inline";
+        rec.note = err.message;
+      }
       renderFileList();
       return;
     }
@@ -777,7 +782,7 @@
     for (const file of fileList) {
       const ext = extOf(file);
       if (ext !== "pdf" && ext !== "xml") {
-        errs.push(`"${file.name}" isn't a supported file type — please upload a PDF.`);
+        errs.push(`"${file.name}" isn't a supported file type — please upload a PDF or XML file.`);
         continue;
       }
       if (currentFile(ext)) {
@@ -828,29 +833,74 @@
     renderFileList();
   });
 
-  // Tracks the order currently awaiting a Helcim result, so the single
-  // top-level "message" listener below knows what it's listening for.
-  let currentCheckout = null;
+  // The order that has actually been placed — set once, on the first POST.
+  // The single message listener below reads it to know which result it's for,
+  // and the submit guard above uses it to refuse a second order.
+  let placedOrder = null;
+
+  // Helcim's start.js appends a full-screen iframe by id, and calling it again
+  // stacks a second one over the first — the exact bug behind the reported
+  // crash. Every mount goes through here so a re-pay or a stray re-submit can
+  // never leave two iframes behind.
+  function openHelcimCheckout(token) {
+    if (!token || typeof appendHelcimPayIframe !== "function") {
+      // Keep the order number visible so the customer can still reach us.
+      const msg = $("msg");
+      msg.className = "err";
+      msg.textContent = "The payment window could not be opened just now — please contact us and quote your order number.";
+      return;
+    }
+    const existing = document.getElementById("helcimPayIframe");
+    if (existing) {
+      if (typeof removeHelcimPayIframe === "function") removeHelcimPayIframe();
+      existing.remove();
+    }
+    appendHelcimPayIframe(token);
+  }
+
+  // Guard the CDN helper so the flow still works even if start.js never loaded;
+  // the iframe is gone either way, but we never throw inside a message listener.
+  function removeHelcimFrame() {
+    if (typeof removeHelcimPayIframe === "function") removeHelcimPayIframe();
+    const existing = document.getElementById("helcimPayIframe");
+    if (existing) existing.remove();
+  }
 
   window.addEventListener("message", (event) => {
-    if (!currentCheckout) return;
-    const helcimId = "helcim-pay-js-" + currentCheckout.checkoutToken;
+    // Helcim posts from its own origin; ignore anything that does not.
+    if (event.origin !== "https://secure.helcim.app") return;
+    const o = placedOrder;
+    if (!o || !o.checkoutToken) return;
+    const helcimId = "helcim-pay-js-" + o.checkoutToken;
     if (event.data && event.data.eventName === helcimId) {
       const msg = $("msg");
+      const submitBtn = $("orderForm").querySelector('button[type="submit"]');
       if (event.data.eventStatus === "SUCCESS") {
+        removeHelcimFrame();
         msg.className = "ok";
-        msg.innerHTML = `Paid! Order <b>${currentCheckout.orderId}</b> received.
-                         <a href="${currentCheckout.statusUrl}">Track it here.</a>`;
-        currentCheckout = null;
+        msg.innerHTML = `Paid! Order <b>${o.orderId}</b> received.
+                         <a href="${o.statusUrl}">Track it here.</a>`;
+        // Permanently — there is nothing left to pay on this order.
+        if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = "Order placed"; }
       } else if (event.data.eventStatus === "ABORTED") {
+        removeHelcimFrame();
         msg.className = "err";
-        msg.textContent = "Payment was cancelled. You can try again below.";
-        currentCheckout = null;
-        const submitBtn = $("orderForm").querySelector('button[type="submit"]');
-        submitBtn.disabled = false;
-        submitBtn.textContent = "Review & pay";
+        // The order stays saved and the submit button stays disabled; the only
+        // way to pay now is the button below, which reopens the same token.
+        msg.innerHTML = `Payment was cancelled. Order <b>${o.orderId}</b> is saved and unpaid.
+                         <button type="button" id="tryPaymentAgain">Try payment again</button>
+                         <br><a href="${o.statusUrl}">Track it here.</a>`;
+        if (submitBtn) submitBtn.disabled = true;
       }
     }
+  });
+
+  // #msg is rebuilt on every payment result, so the "Try payment again" click
+  // is handled by delegation on #msg rather than re-bound each time it appears.
+  $("msg").addEventListener("click", (e) => {
+    const btn = e.target.closest("#tryPaymentAgain");
+    if (!btn || !placedOrder || !placedOrder.checkoutToken) return;
+    openHelcimCheckout(placedOrder.checkoutToken);
   });
 
   $("orderForm").addEventListener("submit", async (e) => {
@@ -861,6 +911,24 @@
     msg.textContent = "Creating your order…";
     submitBtn.disabled = true;
 
+    // One order per form: once we've placed one, a second submit can only
+    // re-open its payment (card) or re-affirm the already-placed order
+    // (e-Transfer/cash/free) — never make a new one. This stops double submits,
+    // retry-after-cancel, and re-clicking the confirmation.
+    if (placedOrder) {
+      if (placedOrder.checkoutToken) {
+        openHelcimCheckout(placedOrder.checkoutToken);
+        msg.className = "hint";
+        msg.textContent = `Reopening payment for order ${placedOrder.orderId}…`;
+      } else {
+        const statusUrl = `/status.html?id=${placedOrder.orderId}&t=${placedOrder.statusToken}`;
+        msg.className = "ok";
+        msg.innerHTML = `Order <b>${placedOrder.orderId}</b> is already placed.
+                         <a href="${statusUrl}">Track it here.</a>`;
+      }
+      return;
+    }
+
     // Submitting mid-upload would send the bytes a second time, through the
     // very limit the direct upload exists to avoid, so the order waits for the
     // file rather than racing it.
@@ -868,6 +936,18 @@
     if (inFlight.length) {
       msg.textContent = "Waiting for your file to finish uploading…";
       await Promise.all(inFlight.map((r) => r.promise));
+    }
+
+    // A file left in the "failed" state (e.g. the >90 MB one) is still sitting
+    // in its hidden input, so building the FormData here would send it inline —
+    // the very request-body blowup the direct upload exists to avoid. Refuse to
+    // submit until it is retried, rather than letting it fall through.
+    const failed = ["pdf", "xml"].map((k) => UPLOADS[k]).filter((r) => r && r.state === "failed");
+    if (failed.length) {
+      msg.className = "err";
+      msg.textContent = "Your file didn't finish uploading — use Retry above, or email it to orders@pringleprints.ca.";
+      submitBtn.disabled = false;
+      return;
     }
 
     const fd = new FormData($("orderForm"));
@@ -905,6 +985,17 @@
 
     const statusUrl = `/status.html?id=${data.orderId}&t=${data.statusToken}`;
 
+    // Record the placed order up front so every branch below (and the submit
+    // guard above) agrees on a single order, and the message listener knows
+    // which payment result it's waiting for.
+    placedOrder = {
+      orderId: data.orderId,
+      statusToken: data.statusToken,
+      statusUrl,
+      checkoutToken: data.checkoutToken || null,
+      paymentMethod: data.paymentMethod || String(fd.get("paymentMethod") || "")
+    };
+
     if (data.free) {
       msg.className = "ok";
       msg.innerHTML = `This one's on us! Order <b>${data.orderId}</b> is in.
@@ -916,13 +1007,6 @@
     $("orderIdText").textContent = data.orderId;
     $("orderIdBox").classList.remove("hidden");
     bindCopyButton($("copyOrderBtn"), () => data.orderId);
-
-    if (fd.get("paymentMethod") === "coupon" && !data.free) {
-      msg.className = "hint";
-      msg.textContent = "Your coupon has been applied — there's still a balance, so choose card or e-Transfer.";
-      submitBtn.disabled = false;
-      return;
-    }
 
     if (data.paymentMethod === "cash") {
       msg.className = "ok";
@@ -951,8 +1035,19 @@
     } else {
       msg.textContent = "Opening secure payment…";
     }
-    currentCheckout = { checkoutToken: data.checkoutToken, orderId: data.orderId, statusUrl };
-    appendHelcimPayIframe(data.checkoutToken);
+
+    // No payment URL was returned (e.g. the gateway was unavailable). Keep the
+    // order number and status link visible so the customer can still reach us.
+    if (!data.checkoutToken) {
+      msg.className = "err";
+      msg.innerHTML = `We took your order <b>${data.orderId}</b> but couldn't open payment just now.
+                       <a href="${statusUrl}">Track it here.</a>`;
+      // The button is already disabled; label it so the state is unambiguous.
+      submitBtn.textContent = "Order placed";
+      return;
+    }
+
+    openHelcimCheckout(data.checkoutToken);
     submitBtn.textContent = "Payment opened below";
   });
 </script>

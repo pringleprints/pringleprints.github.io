@@ -2519,12 +2519,19 @@ var qrcode = function() {
       list.innerHTML = orders.map(cardHtml).join("");
       list.querySelectorAll("[data-advance]").forEach((b) =>
         b.addEventListener("click", () => advance(b.dataset.advance, b.dataset.next || null, b.dataset.method, b.dataset.next || null)));
+      // A failed stage bump must snap the select back to the order's saved stage.
       list.querySelectorAll("[data-jump]").forEach((s) =>
-        s.addEventListener("change", () => advance(s.dataset.jump, s.value, s.dataset.method, s.value)));
+        s.addEventListener("change", async () => {
+          const ok = await advance(s.dataset.jump, s.value, s.dataset.method, s.value);
+          if (!ok) s.value = s.dataset.current;
+        }));
       list.querySelectorAll("[data-markpaid]").forEach((b) =>
         b.addEventListener("click", () => markPaid(b.dataset.markpaid, b.dataset.intent)));
       list.querySelectorAll("[data-cancel]").forEach((b) =>
-        b.addEventListener("click", () => cancelOrder(b.dataset.cancel, !!b.dataset.paid)));
+        b.addEventListener("click", () => {
+          const box = list.querySelector(`[data-silent="${b.dataset.cancel}"]`);
+          cancelOrder(b.dataset.cancel, !!b.dataset.paid, !!(box && box.checked));
+        }));
       list.querySelectorAll("[data-file]").forEach((a) =>
         a.addEventListener("click", (e) => { e.preventDefault(); download(a.dataset.file, a.dataset.field, a.dataset.name); }));
     }
@@ -2637,7 +2644,7 @@ var qrcode = function() {
         const spent = data.coupons.filter((c) => c.state !== "live");
         el("couponList").innerHTML =
           `${live.length} unspent · ${spent.length} used or expired` +
-          (live.length ? `<div style="margin-top:.5rem">${live.map((c) => `<div>${c.code}${c.note ? ` — ${c.note}` : ""}</div>`).join("")}</div>` : "");
+          (live.length ? `<div style="margin-top:.5rem">${live.map((c) => `<div>${c.code}${c.note ? ` — ${escapeHtml(c.note)}` : ""}</div>`).join("")}</div>` : "");
       } catch {
         // A coupon list that will not load is not worth interrupting the
         // orders view for; the orders themselves are the point of this page.
@@ -2668,7 +2675,7 @@ var qrcode = function() {
       const files = (o.files || []).map((f) => f.archivedUrl
         ? `<a href="${f.archivedUrl}" target="_blank" rel="noopener" title="Archived to Proton Drive">⬇ ${f.field.toUpperCase()}</a>`
         : `<a href="#" data-file="${o.id}" data-field="${f.field}" data-name="${f.name}">⬇ ${f.field.toUpperCase()}</a>`).join("");
-      const jump = `<select data-jump="${o.id}" data-method="${o.fulfillment}">
+      const jump = `<select data-jump="${o.id}" data-method="${o.fulfillment}" data-current="${o.status}">
           ${stages.map((s) => `<option value="${s}" data-jump-value="${s}" ${s===o.status?"selected":""}>${s}</option>`).join("")}
         </select>`;
       const advanceBtn = needsConfirm
@@ -2680,7 +2687,7 @@ var qrcode = function() {
           <span class="badge b-${o.status}">${o.status}</span>
           <span class="amt">${money(o.amountCents)}</span>
         </div>
-        <div class="row muted" style="margin-top:.2rem">${method} ${o.email} · ${when(o.createdAt)}${ship ? ` · ${money(o.basePriceCents)}${ship}` : ""}</div>
+        <div class="row muted" style="margin-top:.2rem">${method} ${escapeHtml(o.email)} · ${when(o.createdAt)}${ship ? ` · ${money(o.basePriceCents)}${ship}` : ""}</div>
         ${o.address ? `<div class="muted">📍 ${escapeHtml(o.address)}</div>` : ""}
         ${o.fulfillment === "pickup" && o.pickupLocation ? `<div class="muted">📍 Meet at: ${escapeHtml(o.pickupLocation)}</div>` : ""}
         ${o.details ? `<div class="muted">“${escapeHtml(o.details)}”</div>` : ""}
@@ -2688,7 +2695,10 @@ var qrcode = function() {
         <div class="actions">${o.status === "cancelled" ? "" : `${advanceBtn} ${jump}`}
           ${o.status === "cancelled" ? `<span class="muted">cancelled${o.refundedAt ? " · refunded" : ""}</span>`
             : `${o.paid ? "" : `<button class="confirm" data-markpaid="${o.id}" data-intent="${o.paymentIntent || ""}">Mark paid</button>`}
-               <button class="danger" data-cancel="${o.id}" data-paid="${o.paid ? "1" : ""}">Cancel</button>`}</div>
+                <label class="muted" style="display:inline-flex;align-items:center;gap:.3rem;font-size:.85rem">
+  <input type="checkbox" data-silent="${o.id}"> no email
+</label>
+                <button class="danger" data-cancel="${o.id}" data-paid="${o.paid ? "1" : ""}">Cancel</button>`}</div>
       </div>`;
     }
 
@@ -2716,15 +2726,15 @@ var qrcode = function() {
       }
     }
 
-    async function cancelOrder(orderId, paid) {
-      if (!confirm(`Cancel ${orderId}? The customer will be emailed.`)) return;
+    async function cancelOrder(orderId, paid, silent) {
+      if (!confirm(`Cancel ${orderId}? ${silent ? "The customer will NOT be emailed." : "The customer will be emailed."}`)) return;
       const refund = paid ? confirm("Also refund the payment?\n\nCard payments go back through Helcim. Anything else has to be returned by hand.") : false;
       setStatus("Cancelling…");
       try {
         const res = await fetch(`${API}/admin/cancel`, {
           method: "POST",
           headers: { ...auth(), "content-type": "application/json" },
-          body: JSON.stringify({ orderId, refund }),
+          body: JSON.stringify({ orderId, refund, silent: !!silent }),
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "Could not cancel that order.");
@@ -2746,7 +2756,7 @@ var qrcode = function() {
       let pickupLocation;
       if (method === "pickup" && targetStage === "ready-for-pickup") {
         pickupLocation = prompt("Where will you meet the customer? (shown in their email)");
-        if (pickupLocation === null) return; // cancelled — don't advance
+        if (pickupLocation === null) return false; // cancelled — don't advance
         pickupLocation = pickupLocation.trim();
       }
       const body = stage ? { orderId, stage } : { orderId };
@@ -2759,8 +2769,10 @@ var qrcode = function() {
         });
         if (!res.ok) throw new Error(await res.text());
         await load();
+        return true;
       } catch (e) {
         setStatus("Update failed: " + (e.message || e), "err");
+        return false;
       }
     }
 
