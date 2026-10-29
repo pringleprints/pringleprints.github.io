@@ -171,6 +171,7 @@
               <option value="Standard cardstock" data-surcharge="0" selected>Standard cardstock (recommended)</option>
               <option value="Double-sided glossy laminate" data-surcharge="500">Double-sided glossy laminate (+$5 per 112 cards)</option>
               <option value="Satin front + matte laminate back" data-surcharge="500">Satin front + matte laminate back (+$5 per 112 cards)</option>
+              <option value="Foil the entire order" data-id="foil" data-surcharge="500">Foil the entire order (+$5 per 112 cards)</option>
             </select>
           </label>
 
@@ -200,8 +201,19 @@
         </div>
       </section>
 
+      <section class="card" id="extrasCard" aria-labelledby="stepExtras" hidden>
+        <h2 class="card-title" id="stepExtras"><span class="step-num" aria-hidden="true">3</span>Deckboxes</h2>
+        <div class="field-group">
+          <label class="field">
+            <span class="label-text">Clear deckboxes</span>
+            <input type="number" id="deckboxes" min="0" max="99" step="1" value="0">
+            <span class="hint" id="deckboxNote"></span>
+          </label>
+        </div>
+      </section>
+
       <section class="card" aria-labelledby="stepDelivery">
-        <h2 class="card-title" id="stepDelivery"><span class="step-num" aria-hidden="true">3</span>Delivery</h2>
+        <h2 class="card-title" id="stepDelivery"><span class="step-num" aria-hidden="true">4</span>Delivery</h2>
         <div class="field">
           <span class="label-text">How would you like it?</span>
           <button type="button" id="methodTrigger" class="method-trigger" aria-haspopup="dialog">
@@ -212,7 +224,7 @@
       </section>
 
       <section class="card" aria-labelledby="stepPay">
-        <h2 class="card-title" id="stepPay"><span class="step-num" aria-hidden="true">4</span>Pay</h2>
+        <h2 class="card-title" id="stepPay"><span class="step-num" aria-hidden="true">5</span>Pay</h2>
         <div class="field">
           <span class="label-text">How would you like to pay?</span>
           <div class="methods" id="payMethods">
@@ -305,6 +317,7 @@
     renderPrices();
     await loadCoupon();
     renderMethods();
+    syncExtras();
     recalc();
     syncCashOption();
 
@@ -360,6 +373,18 @@
       e.preventDefault();
       applyCoupon($("couponInput").value);
     }
+  });
+
+  // The Extras section is invisible until /config advertises add-ons, but the
+  // control still exists in the markup, so bind it here. Every reader of its
+  // value guards on CFG.addOns, so an older API that never showed the section
+  // can never have its value sent.
+  $("deckboxes").addEventListener("input", () => {
+    const input = $("deckboxes");
+    let n = parseInt(input.value, 10);
+    if (input.value.trim() === "" || isNaN(n)) n = 0; // empty reads as zero
+    input.value = String(Math.max(0, Math.min(99, n))); // clamp to the 0–99 range
+    recalc();
   });
 
   function couponCents() {
@@ -424,6 +449,42 @@
     return batchCents + surcharge * units;
   }
 
+  // The deckbox count is clamped both by the input handler and here so a value
+  // read at any moment (recalc, submit) is always a whole number in 0–99.
+  function deckboxCount() {
+    const n = parseInt($("deckboxes").value, 10);
+    return isNaN(n) ? 0 : Math.max(0, Math.min(99, n));
+  }
+
+  // Deckboxes are the only add-on, so they are the only thing layered on top of
+  // the print subtotal. baseCents() already folds in any finish surcharge, so a
+  // foil finish is counted there — a coupon (which only ever trims baseCents())
+  // therefore never reduces the deckbox total.
+  function addOnsCents() {
+    if (!CFG.addOns) return 0;
+    return deckboxCount() * CFG.addOns.deckboxCents;
+  }
+
+  // Keep the deckbox note in sync with the current count every time the order
+  // changes, so the figure shown always matches the total.
+  function syncExtrasNotes() {
+    if (!CFG.addOns) return;
+    const boxes = deckboxCount();
+    if (boxes > 0) {
+      const cost = boxes * CFG.addOns.deckboxCents;
+      $("deckboxNote").textContent = `${boxes} × ${money(CFG.addOns.deckboxCents)} = ${money(cost)}`;
+    } else {
+      $("deckboxNote").textContent = "";
+    }
+  }
+
+  // The add-ons are a feature the order API advertises only when it has prices
+  // for them, so the section stays hidden — and its controls stay inert — on
+  // any deployment that predates the feature.
+  function syncExtras() {
+    $("extrasCard").toggleAttribute("hidden", !CFG.addOns);
+  }
+
   function chosenMethod() {
     const el = document.querySelector('input[name="fulfillment"]:checked');
     return el ? el.value : "pickup";
@@ -470,12 +531,22 @@
     const method = chosenMethod();
     const fee = feeFor(method, base);
     const discount = couponCents();
-    const total = Math.max(0, base - discount) + fee;
+    const addOns = addOnsCents();
+    const total = Math.max(0, base - discount) + addOns + fee;
     const batchLabel = $("batchSize").selectedOptions[0].textContent;
     const finishLabel = $("finish").selectedOptions[0].textContent;
+    const extrasLines = [];
+    if (CFG.addOns) {
+      const boxes = deckboxCount();
+      if (boxes > 0) {
+        extrasLines.push(`<div class="summary-line"><span>${boxes} clear deckboxes</span><b>${money(boxes * CFG.addOns.deckboxCents)}</b></div>`);
+      }
+    }
+    syncExtrasNotes();
     $("total").innerHTML =
       `<div class="summary-line"><span>${batchLabel}</span></div>` +
       `<div class="summary-line"><span>${finishLabel}</span></div>` +
+      extrasLines.join("") +
       `<div class="summary-line"><span>${labels[method] || method}</span><b>${fee === 0 ? "Free" : money(fee)}</b></div>` +
       (discount ? `<div class="summary-line"><span>Coupon</span><b>-${money(discount)}</b></div>` : "") +
       `<div class="summary-total"><span>Total</span><span>${money(total)}</span></div>`;
@@ -963,8 +1034,18 @@
     const batchLabel = $("batchSize").selectedOptions[0].textContent;
     const finishLabel = $("finish").selectedOptions[0].textContent;
     const notes = (fd.get("details") || "").trim();
-    fd.set("details", `Batch: ${batchLabel}\nFinish: ${finishLabel}` + (notes ? `\nNotes: ${notes}` : ""));
-    fd.set("amountCents", String(baseCents()));
+    const extrasSummary = [];
+    if (CFG.addOns) {
+      const boxes = deckboxCount();
+      if (boxes > 0) extrasSummary.push(`${boxes} clear deckboxes`);
+    }
+    fd.set("details", `Batch: ${batchLabel}\nFinish: ${finishLabel}` +
+      (notes ? `\nNotes: ${notes}` : "") +
+      (extrasSummary.length ? `\nExtras: ${extrasSummary.join(", ")}` : ""));
+    fd.set("amountCents", String(baseCents() + addOnsCents()));
+    if (CFG.addOns) {
+      fd.set("deckboxes", String(deckboxCount()));
+    }
     if (COUPON) fd.set("couponCode", COUPON.code);
     const batchId = $("batchSize").selectedOptions[0].dataset.id;
     const finishId = $("finish").selectedOptions[0].dataset.id;

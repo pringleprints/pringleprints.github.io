@@ -227,7 +227,7 @@
         <tr class="value"><td>Up to 672 cards<span class="tag">best value</span></td><td class="price">$125</td></tr>
       </tbody>
     </table>
-    <p class="footnote" id="priceFootnote">Finishes: standard cardstock is included and recommended. Double-sided glossy laminate or satin front with matte laminate back adds $5 per batch. Prices include tax.</p>
+    <p class="footnote" id="priceFootnote">Finishes: standard cardstock is included and recommended. Double-sided glossy laminate or satin front with matte laminate back adds $5 per batch. Foil the entire order adds $5 per 112 cards. Clear deckboxes are $5 each. Prices include tax.</p>
   </section>
 
   <section class="sheet" aria-labelledby="specs-h">
@@ -294,13 +294,24 @@
     // rather than saying "per batch" and leaving people to guess what one is.
     const charged = (cfg.finishes || []).filter((f) => f.cents > 0);
     const single = tiers.find((t) => (t.units || 1) === 1);
+    const unit = single && single.cards ? `per ${single.cards} cards` : "per batch";
+    const parts = ["Finishes: standard cardstock is included and recommended."];
     if (charged.length) {
-      const unit = single && single.cards ? `per ${single.cards} cards` : "per batch";
-      document.getElementById("priceFootnote").textContent =
-        `Finishes: standard cardstock is included and recommended. ` +
-        `Double-sided glossy laminate or satin front with matte laminate back adds ${money(charged[0].cents)} ${unit}. ` +
-        `Prices include tax.`;
+      parts.push(`Double-sided glossy laminate or satin front with matte laminate back adds ${money(charged[0].cents)} ${unit}.`);
     }
+    // Foil is a finish (mutually exclusive with the others), so it is pulled
+    // from cfg.finishes rather than cfg.addOns — guard against it being absent
+    // so we never render money(undefined). Clear deckboxes are the only add-on,
+    // priced per box. Either can be missing on an API that predates it.
+    const foil = (cfg.finishes || []).find((f) => f.id === "foil");
+    if (foil) {
+      parts.push(`Foil the entire order adds ${money(foil.cents)} ${unit}.`);
+    }
+    if (cfg.addOns) {
+      parts.push(`Clear deckboxes are ${money(cfg.addOns.deckboxCents)} each.`);
+    }
+    parts.push("Prices include tax.");
+    document.getElementById("priceFootnote").textContent = parts.join(" ");
   })();
 </script>
 </body>

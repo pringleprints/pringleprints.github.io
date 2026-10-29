@@ -2681,13 +2681,17 @@ var qrcode = function() {
       const advanceBtn = needsConfirm
         ? `<button class="confirm" data-advance="${o.id}" data-method="${o.fulfillment}" data-next="${next || ""}">Confirm payment & start</button>`
         : next ? `<button class="advance" data-advance="${o.id}" data-method="${o.fulfillment}" data-next="${next}">→ ${next}</button>` : "";
+      const addOns = [];
+      const boxes = Number(o.deckboxes || 0);
+      if (boxes > 0) addOns.push(`${boxes} deckbox${boxes === 1 ? "" : "s"}`);
+      const addOnsText = addOns.length ? " · " + addOns.join(" · ") : "";
       return `<div class="card">
         <div class="row">
           <span class="id">${o.id}</span>
           <span class="badge b-${o.status}">${o.status}</span>
           <span class="amt">${money(o.amountCents)}</span>
         </div>
-        <div class="row muted" style="margin-top:.2rem">${method} ${escapeHtml(o.email)} · ${when(o.createdAt)}${ship ? ` · ${money(o.basePriceCents)}${ship}` : ""}</div>
+        <div class="row muted" style="margin-top:.2rem">${method} ${escapeHtml(o.email)} · ${when(o.createdAt)}${ship ? ` · ${money(o.basePriceCents)}${ship}` : ""}${addOnsText}</div>
         ${o.address ? `<div class="muted">📍 ${escapeHtml(o.address)}</div>` : ""}
         ${o.fulfillment === "pickup" && o.pickupLocation ? `<div class="muted">📍 Meet at: ${escapeHtml(o.pickupLocation)}</div>` : ""}
         ${o.details ? `<div class="muted">“${escapeHtml(o.details)}”</div>` : ""}
