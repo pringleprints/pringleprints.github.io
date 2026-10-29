@@ -2528,7 +2528,10 @@ var qrcode = function() {
       list.querySelectorAll("[data-markpaid]").forEach((b) =>
         b.addEventListener("click", () => markPaid(b.dataset.markpaid, b.dataset.intent)));
       list.querySelectorAll("[data-cancel]").forEach((b) =>
-        b.addEventListener("click", () => cancelOrder(b.dataset.cancel, !!b.dataset.paid)));
+        b.addEventListener("click", () => {
+          const box = list.querySelector(`[data-silent="${b.dataset.cancel}"]`);
+          cancelOrder(b.dataset.cancel, !!b.dataset.paid, !!(box && box.checked));
+        }));
       list.querySelectorAll("[data-file]").forEach((a) =>
         a.addEventListener("click", (e) => { e.preventDefault(); download(a.dataset.file, a.dataset.field, a.dataset.name); }));
     }
@@ -2692,7 +2695,10 @@ var qrcode = function() {
         <div class="actions">${o.status === "cancelled" ? "" : `${advanceBtn} ${jump}`}
           ${o.status === "cancelled" ? `<span class="muted">cancelled${o.refundedAt ? " · refunded" : ""}</span>`
             : `${o.paid ? "" : `<button class="confirm" data-markpaid="${o.id}" data-intent="${o.paymentIntent || ""}">Mark paid</button>`}
-               <button class="danger" data-cancel="${o.id}" data-paid="${o.paid ? "1" : ""}">Cancel</button>`}</div>
+                <label class="muted" style="display:inline-flex;align-items:center;gap:.3rem;font-size:.85rem">
+  <input type="checkbox" data-silent="${o.id}"> no email
+</label>
+                <button class="danger" data-cancel="${o.id}" data-paid="${o.paid ? "1" : ""}">Cancel</button>`}</div>
       </div>`;
     }
 
@@ -2720,15 +2726,15 @@ var qrcode = function() {
       }
     }
 
-    async function cancelOrder(orderId, paid) {
-      if (!confirm(`Cancel ${orderId}? The customer will be emailed.`)) return;
+    async function cancelOrder(orderId, paid, silent) {
+      if (!confirm(`Cancel ${orderId}? ${silent ? "The customer will NOT be emailed." : "The customer will be emailed."}`)) return;
       const refund = paid ? confirm("Also refund the payment?\n\nCard payments go back through Helcim. Anything else has to be returned by hand.") : false;
       setStatus("Cancelling…");
       try {
         const res = await fetch(`${API}/admin/cancel`, {
           method: "POST",
           headers: { ...auth(), "content-type": "application/json" },
-          body: JSON.stringify({ orderId, refund }),
+          body: JSON.stringify({ orderId, refund, silent: !!silent }),
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "Could not cancel that order.");
