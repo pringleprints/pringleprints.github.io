@@ -142,6 +142,7 @@
   .local-nudge .nudge-actions button { padding: 9px 14px; font-size: 13.5px; }
   .local-nudge .nudge-actions button.secondary { background: var(--paper); color: var(--ink); border: 1.5px solid var(--rule); }
   .local-nudge .nudge-actions button.secondary:hover { background: var(--magenta-soft); border-color: var(--magenta); }
+  #addrStructured[hidden] { display: none !important; }
   footer { max-width: 1040px; margin: 0 auto; padding: 40px 16px 64px; font-family: var(--mono); font-size: 13px; color: var(--ink-soft); }
 </style>
 </head>
@@ -300,7 +301,7 @@
                submitted fields are exactly the structured ones. While hidden it
                is inert: a descendant of a [hidden] element is never submitted,
                keeping the flag-off payload byte-identical. -->
-          <div id="addrStructured" class="field" style="margin-top:14px;display:grid;gap:10px;grid-template-columns:1fr" hidden>
+          <div id="addrStructured" class="field" style="margin-top:14px;display:none;gap:10px;grid-template-columns:1fr" hidden>
             <label class="field">
               <span class="label-text">Recipient name</span>
               <input type="text" name="name" autocomplete="name">
@@ -368,10 +369,10 @@
     applyShopState();
     renderPrices();
     await loadCoupon();
-    renderMethods();
-    syncExtras();
     buildAddressUI();
     wireAddressFields();
+    renderMethods();
+    syncExtras();
     updateQuoteVisibility();
     recalc();
     syncCashOption();
@@ -587,6 +588,7 @@
     // Flag-on: the structured block replaces the textarea (removed by
     // buildAddressUI); street is required for both mail and delivery.
     $("addrStructured").hidden = !needsAddr;
+    $("addrStructured").style.display = needsAddr ? "grid" : "none";
     document.getElementById("addrStreetLabel").textContent = m === "mail" ? "Mailing address" : "Delivery address";
     document.querySelector('[name="address"]').required = needsAddr;
     highlightSelectedMethod();
@@ -632,7 +634,9 @@
       `<div class="summary-total"><span>Total</span><span>${money(total)}</span></div>`;
     $("summaryToggleTotal").textContent = money(total);
     $("methodTriggerText").textContent = labels[method] || method;
-    $("methodTriggerFee").textContent = fee === 0 ? "Free" : money(fee);
+    $("methodTriggerFee").textContent = CFG.shipping && method === "mail"
+      ? (quoteState.status === "ok" ? money(fee) : "Calculated")
+      : (fee === 0 ? "Free" : money(fee));
   }
 
   // ---------- live shipping (only when /config advertises it) ----------
@@ -666,7 +670,6 @@
     if (!CFG.shipping) return;
     const wrap = $("addressWrap");
     if (wrap) wrap.remove();
-    $("addrStructured").hidden = false;
     $("quotePanel").hidden = false;
     $("localNudge").hidden = false;
     const sel = document.querySelector('[name="province"]');
@@ -716,7 +719,7 @@
     if (!CFG.shipping) { if (!f.street) document.querySelector('[name="address"]').focus(); return; }
     const want = { name: f.name, address: f.street, city: f.city, province: f.province, postalCode: f.postal, phone: f.phone };
     for (const k of ["name", "address", "city", "province", "postalCode", "phone"]) {
-      if (want[k]) { const el = document.querySelector(`[name="${k}"]`); if (el) { el.focus(); return; } }
+      if (!want[k]) { const el = document.querySelector(`[name="${k}"]`); if (el) { el.focus(); return; } }
     }
   }
 
@@ -780,7 +783,9 @@
 
   function onPostalInput() {
     const valid = !!cleanPostal(fieldVal("postalCode"));
-    if (!valid && quoteState.status !== "idle") { clearQuote(); renderQuoteOptions(); }
+    // A changed postal invalidates the old rate even when the new one is still
+    // valid; drop it so the summary can never show a price for another address.
+    if (quoteState.status !== "idle") { clearQuote(); renderQuoteOptions(); }
     if (valid) scheduleQuote();
     // The local-nudge / delivery-block both hinge on the postal, so re-evaluate
     // it on every keystroke, not only when the mail quote is recomputed.
@@ -989,7 +994,13 @@
         // valid address still proceeds once the rate returns.
         if (needsQuote()) await runQuote();
         if (quoteState.status !== "ok") {
-          setModalErr("Choose a shipping option above before you continue.");
+          setModalErr(
+            quoteState.status === "none"
+              ? "No shipping options for this address — choose pickup or local delivery."
+              : quoteState.status === "error"
+                ? "Shipping quote unavailable — try again."
+                : "Choose a shipping option above before you continue."
+          );
           return;
         }
       }
@@ -1403,6 +1414,21 @@
     if (failed.length) {
       msg.className = "err";
       msg.textContent = "Your file didn't finish uploading — use Retry above, or email it to orders@pringleprints.ca.";
+      submitBtn.disabled = false;
+      return;
+    }
+
+    // The modal's confirm validates the address, but closing it without
+    // confirming must not let an incomplete mail/delivery order through.
+    if (CFG.shipping && (chosenMethod() === "mail" || chosenMethod() === "delivery") && !addressComplete(chosenMethod())) {
+      msg.className = "err";
+      msg.textContent = "Please complete the delivery address before submitting.";
+      submitBtn.disabled = false;
+      return;
+    }
+    if (CFG.shipping && chosenMethod() === "mail" && quoteState.status !== "ok") {
+      msg.className = "err";
+      msg.textContent = "Choose a shipping option before submitting.";
       submitBtn.disabled = false;
       return;
     }
