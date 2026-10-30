@@ -96,6 +96,17 @@
   .method.disabled { opacity: .55; cursor: not-allowed; }
   .method.disabled input { pointer-events: none; }
 
+  .deckbox-stepper { display: inline-flex; align-items: center; gap: 8px; }
+  .deckbox-stepper input { text-align: center; max-width: 5rem; }
+  .deckbox-stepper button { padding: 9px 14px; font-size: 16px; }
+
+  .addr-locality { display: grid; gap: 8px; grid-template-columns: minmax(0, 1fr) 110px 140px; }
+  .addr-locality input, .addr-locality select, .addr-locality .field { min-width: 0; }
+  @media (max-width: 620px) {
+    .addr-locality { grid-template-columns: 1fr 1fr; }
+    .addr-locality > .field:first-child { grid-column: 1 / -1; }
+  }
+
   /* Photon address suggestions: a floating listbox under the street field. */
   .addr-suggestions { list-style: none; position: absolute; left: 0; right: 0; top: 100%; z-index: 6; background: var(--paper); border: 1.5px solid var(--magenta); border-radius: 8px; overflow: hidden; box-shadow: var(--shadow); max-height: 220px; overflow-y: auto; }
   .addr-suggestions li { padding: 10px 12px; font-size: 14px; cursor: pointer; border-bottom: 1px solid var(--rule); }
@@ -156,8 +167,26 @@
 
   <div class="checkout">
     <form id="orderForm" class="checkout-form">
+      <section class="card" aria-labelledby="stepFiles">
+        <h2 class="card-title" id="stepFiles"><span class="step-num" aria-hidden="true">1</span>Files</h2>
+        <div class="field">
+          <span class="label-text">Print file (optional)</span>
+          <div class="upload" id="uploadZone" tabindex="0" role="button" aria-label="Upload your print file">
+            <div class="upload-copy">
+              <strong>Upload your print file (PDF)</strong>
+              <span class="hint">Drag &amp; drop, or click to browse.</span>
+            </div>
+          </div>
+          <input type="file" id="filePicker" accept=".pdf,.xml" multiple hidden>
+          <input type="file" name="xml" accept=".xml,text/xml,application/xml" hidden>
+          <input type="file" name="pdf" accept=".pdf,application/pdf" hidden>
+          <ul id="fileList" class="file-list"></ul>
+          <p id="fileMsg" class="hint hidden"></p>
+        </div>
+      </section>
+
       <section class="card" aria-labelledby="stepDetails">
-        <h2 class="card-title" id="stepDetails"><span class="step-num" aria-hidden="true">1</span>Details</h2>
+        <h2 class="card-title" id="stepDetails"><span class="step-num" aria-hidden="true">2</span>Order details</h2>
         <div class="field-group">
           <label class="field">
             <span class="label-text">Email</span>
@@ -186,45 +215,28 @@
             </select>
           </label>
 
+          <div id="deckboxField" class="field-group" hidden>
+            <label class="field" style="gap:8px">
+              <span class="label-text">Clear deckboxes</span>
+              <div class="deckbox-stepper">
+                <button type="button" id="deckboxMinus" aria-label="One fewer deckbox">−</button>
+                <input type="number" id="deckboxes" min="0" max="99" step="1" inputmode="numeric" value="0">
+                <button type="button" id="deckboxPlus" aria-label="One more deckbox">+</button>
+              </div>
+            </label>
+            <span class="hint" id="deckboxNote"></span>
+          </div>
+
           <label class="field">
             <span class="label-text">Notes / special requests</span>
-            <span class="hint">Anything we should know — e.g. “laminate the tokens only,” quantity details, timing.</span>
+            <span class="hint">Anything we should know — e.g. “foil the commanders only,” “laminate the tokens only,” quantity details, timing.</span>
             <textarea name="details" id="notes" rows="3"></textarea>
           </label>
         </div>
       </section>
 
-      <section class="card" aria-labelledby="stepFiles">
-        <h2 class="card-title" id="stepFiles"><span class="step-num" aria-hidden="true">2</span>Files</h2>
-        <div class="field">
-          <span class="label-text">Print file (optional)</span>
-          <div class="upload" id="uploadZone" tabindex="0" role="button" aria-label="Upload your print file">
-            <div class="upload-copy">
-              <strong>Upload your print file (PDF)</strong>
-              <span class="hint">Drag &amp; drop, or click to browse.</span>
-            </div>
-          </div>
-          <input type="file" id="filePicker" accept=".pdf,.xml" multiple hidden>
-          <input type="file" name="xml" accept=".xml,text/xml,application/xml" hidden>
-          <input type="file" name="pdf" accept=".pdf,application/pdf" hidden>
-          <ul id="fileList" class="file-list"></ul>
-          <p id="fileMsg" class="hint hidden"></p>
-        </div>
-      </section>
-
-      <section class="card" id="extrasCard" aria-labelledby="stepExtras" hidden>
-        <h2 class="card-title" id="stepExtras"><span class="step-num" aria-hidden="true">3</span>Deckboxes</h2>
-        <div class="field-group">
-          <label class="field">
-            <span class="label-text">Clear deckboxes</span>
-            <input type="number" id="deckboxes" min="0" max="99" step="1" value="0">
-            <span class="hint" id="deckboxNote"></span>
-          </label>
-        </div>
-      </section>
-
       <section class="card" aria-labelledby="stepDelivery">
-        <h2 class="card-title" id="stepDelivery"><span class="step-num" aria-hidden="true">4</span>Delivery</h2>
+        <h2 class="card-title" id="stepDelivery"><span class="step-num" aria-hidden="true">3</span>Delivery</h2>
         <div class="field">
           <span class="label-text">How would you like it?</span>
           <div class="methods" id="methods"><!-- filled from /config --></div>
@@ -255,7 +267,7 @@
             <ul id="addrSuggestions" class="addr-suggestions" role="listbox" aria-labelledby="addrStreetLabel" hidden></ul>
             <p class="addr-credit"><a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">Address suggestions © OpenStreetMap contributors</a></p>
           </div>
-          <div class="field" style="display:grid;gap:8px;grid-template-columns:1fr 120px 160px">
+          <div class="addr-locality">
             <label class="field">
               <span class="label-text">City</span>
               <input type="text" name="city" autocomplete="address-level2">
@@ -266,13 +278,14 @@
             </label>
             <label class="field">
               <span class="label-text">Postal code</span>
-              <input type="text" name="postalCode" inputmode="text" autocomplete="postal-code" placeholder="K1A 1A1">
+              <input type="text" name="postalCode" inputmode="text" pattern="[A-Za-z][0-9][A-Za-z][ -]?[0-9][A-Za-z][0-9]" title="A1A 1A1" maxlength="7" autocomplete="postal-code" placeholder="K1A 1A1">
             </label>
           </div>
           <label class="field">
             <span class="label-text">Phone</span>
             <input type="tel" name="phone" autocomplete="tel">
           </label>
+          <p class="hint" style="margin-top:6px">All fields are required.</p>
         </div>
         <!-- Flag-on only: the live quote options and the local nudge. Hidden by
              default so they never show or submit on an unconfigured deploy. The
@@ -286,7 +299,7 @@
       </section>
 
       <section class="card" aria-labelledby="stepPay">
-        <h2 class="card-title" id="stepPay"><span class="step-num" aria-hidden="true">5</span>Pay</h2>
+        <h2 class="card-title" id="stepPay"><span class="step-num" aria-hidden="true">4</span>Pay</h2>
         <div class="field">
           <span class="label-text">How would you like to pay?</span>
           <div class="methods" id="payMethods">
@@ -362,6 +375,7 @@
     wireAddressFields();
     renderMethods();
     syncExtras();
+    reflectDeckboxButtons();
     updateQuoteVisibility();
     recalc();
     syncCashOption();
@@ -431,8 +445,28 @@
     if (input.value.trim() === "" || isNaN(n)) n = 0; // empty reads as zero
     input.value = String(Math.max(0, Math.min(99, n))); // clamp to the 0–99 range
     recalc();
+    reflectDeckboxButtons();
     if (CFG.shipping) scheduleQuote(); // deckboxes change the mail rate
   });
+
+  // The stepper buttons set the value and dispatch the same input event the
+  // typed handler listens for, so clamping, recalc, quote-schedule, and the
+  // note/total all stay in one place. Disabled at the 0/99 ends.
+  function reflectDeckboxButtons() {
+    const minus = $("deckboxMinus"), plus = $("deckboxPlus");
+    if (!minus || !plus) return;
+    const n = deckboxCount();
+    minus.disabled = n <= 0;
+    plus.disabled = n >= 99;
+  }
+  function setDeckbox(n) {
+    const input = $("deckboxes");
+    input.value = String(Math.max(0, Math.min(99, n)));
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    reflectDeckboxButtons();
+  }
+  $("deckboxMinus").addEventListener("click", () => setDeckbox(deckboxCount() - 1));
+  $("deckboxPlus").addEventListener("click", () => setDeckbox(deckboxCount() + 1));
 
   function couponCents() {
     return COUPON ? Math.min(COUPON.amountCents, baseCents()) : 0;
@@ -536,7 +570,11 @@
   // for them, so the section stays hidden — and its controls stay inert — on
   // any deployment that predates the feature.
   function syncExtras() {
-    $("extrasCard").toggleAttribute("hidden", !CFG.addOns);
+    // The Deckboxes card was folded into Order details, so the wrapper toggles
+    // here instead. Guards on CFG.addOns elsewhere keep it inert when the API
+    // has no add-on prices.
+    $("deckboxField").toggleAttribute("hidden", !CFG.addOns);
+    reflectDeckboxButtons();
   }
 
   function chosenMethod() {
@@ -586,11 +624,13 @@
       return;
     }
     // Flag-on: the structured block replaces the textarea (removed by
-    // buildAddressUI); street is required for both mail and delivery.
+    // buildAddressUI). The six structured fields are required for mail and
+    // delivery, and cleared for pickup (and while the block is hidden they carry
+    // no required, so they are never a candidate for native validation).
     $("addrStructured").hidden = !needsAddr;
     $("addrStructured").style.display = needsAddr ? "grid" : "none";
+    setAddrRequired(needsAddr);
     document.getElementById("addrStreetLabel").textContent = m === "mail" ? "Mailing address" : "Delivery address";
-    document.querySelector('[name="address"]').required = needsAddr;
     highlightSelectedMethod();
     // Leaving mail drops the quote: pickup and local delivery need none.
     // Arriving at mail re-quotes so the rate tracks the current batch/deckboxes.
@@ -669,7 +709,7 @@
     $("quotePanel").hidden = false;
     $("localNudge").hidden = false;
     const sel = document.querySelector('[name="province"]');
-    if (sel) sel.innerHTML = PROVINCES.map(([c, n]) => `<option value="${c}">${n}</option>`).join("");
+    if (sel) sel.innerHTML = `<option value="">Province</option>` + PROVINCES.map(([c, n]) => `<option value="${c}">${n}</option>`).join("");
     wirePhoton();
   }
 
@@ -705,6 +745,41 @@
     if (!CFG.shipping) return true;
     if (!f.name) return false;
     return !!f.postal && !!f.city && !!f.province && !!f.phone;
+  }
+
+  // Mirror the required attribute the browser enforces with aria-required so
+  // assistive tech reports the state even before validation runs. Gated on
+  // needsAddr so a hidden block never carries required.
+  function setAddrRequired(on) {
+    ["name", "address", "city", "province", "postalCode", "phone"].forEach((n) => {
+      const el = document.querySelector(`[name="${n}"]`);
+      if (!el) return;
+      el.toggleAttribute("required", on);
+      el.setAttribute("aria-required", String(on));
+    });
+  }
+
+  // Native validation prevents posting, but the browser may not scroll the
+  // offending field into view. Move focus + scroll to the first empty required
+  // field so the customer sees what is missing.
+  function focusFirstEmptyAddressField(m) {
+    if (!CFG.shipping) {
+      const el = document.querySelector('[name="address"]');
+      if (el && !el.value.trim()) { el.focus(); scrollIntoViewSafe(el); }
+      return;
+    }
+    for (const n of ["name", "address", "city", "province", "postalCode", "phone"]) {
+      const el = document.querySelector(`[name="${n}"]`);
+      if (el && !el.value.trim()) { el.focus(); scrollIntoViewSafe(el); return; }
+    }
+  }
+  // scrollIntoView is a no-op for off-screen fields, so never let a missing
+  // implementation (or an odd viewport) throw while focusing the offending field.
+  function scrollIntoViewSafe(el) {
+    if (typeof el.scrollIntoView === "function") el.scrollIntoView({ block: "center" });
+  }
+  function focusFirstEmptyAddressMethod() {
+    focusFirstEmptyAddressField(chosenMethod());
   }
 
   function selectedShippingNet() {
@@ -1444,6 +1519,7 @@
       msg.className = "err";
       msg.textContent = "Please complete the delivery address before submitting.";
       submitBtn.disabled = false;
+      focusFirstEmptyAddressMethod();
       return;
     }
     if (CFG.shipping && chosenMethod() === "mail" && quoteState.status !== "ok") {
