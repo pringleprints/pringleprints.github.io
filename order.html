@@ -87,7 +87,19 @@
   .file-retry { background: none; border: none; color: var(--magenta); font-size: 12px; text-decoration: underline; cursor: pointer; padding: 2px 4px; flex-shrink: 0; }
 
   .methods { display: grid; gap: 10px; }
-  .local-details { display: grid; gap: 10px; margin-top: 2px; }
+  .local-details { display: grid; gap: 10px; margin: 10px 0 0 10px; padding-left: 14px; border-left: 2px solid var(--rule); }
+  #localChoices { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  #localChoices .method { padding: 10px 12px; background: var(--paper-sunk); }
+  #localChoices .method b { font-size: 14px; }
+  #localChoices .method small { font-size: 12.5px; }
+  #localChoices .method.selected, #pickupLocationChoices .method.selected { border-color: var(--magenta); background: var(--magenta-soft); }
+  #pickupLocationBlock { display: grid; gap: 6px; }
+  .local-subhead { font-size: 11.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-soft); }
+  #pickupLocationChoices { gap: 6px; }
+  #pickupLocationChoices .method { padding: 9px 12px; }
+  #pickupLocationChoices .method b { font-size: 14px; }
+  #pickupLocationChoices .method small { font-size: 12.5px; line-height: 1.4; }
+  @media (max-width: 540px) { #localChoices { grid-template-columns: 1fr; } }
   .method { display: flex; gap: .7rem; align-items: flex-start; border: 1.5px solid var(--rule); border-radius: 9px; padding: 13px 14px; cursor: pointer; }
   .method.selected { border-color: var(--magenta); background: var(--magenta-soft); }
   .method input { width: auto; margin-top: 3px; accent-color: var(--magenta); }
@@ -163,7 +175,7 @@
   .local-nudge .nudge-actions button { padding: 9px 14px; font-size: 13.5px; }
   .local-nudge .nudge-actions button.secondary { background: var(--paper); color: var(--ink); border: 1.5px solid var(--rule); }
   .local-nudge .nudge-actions button.secondary:hover { background: var(--magenta-soft); border-color: var(--magenta); }
-  #addrStructured[hidden], #localDetails[hidden], #pickupLocationChoices[hidden] { display: none !important; }
+  #addrStructured[hidden], #localDetails[hidden], #pickupLocationBlock[hidden] { display: none !important; }
   .rights-check { display: flex; gap: 10px; align-items: flex-start; margin: 18px 0 4px; font-size: 15px; color: var(--ink-soft); }
   .rights-check input { width: auto; flex: none; margin-top: 4px; accent-color: var(--magenta); }
   .rights-check label { cursor: pointer; }
@@ -559,15 +571,18 @@
         <div class="methods" id="localChoices">
           <label class="method" data-choice="pickup">
             <input type="radio" name="fulfillmentChoice" value="pickup" checked>
-            <span><b>Pickup</b><br><small>${locations.length ? "Choose one of " + locations.length + " Ottawa game stores" : "Pickup location confirmed by email"}</small></span>
+            <span><b>Pickup</b><br><small>${locations.length ? "Free at a partner store" : "Location confirmed by email"}</small></span>
           </label>
           <label class="method" data-choice="delivery">
             <input type="radio" name="fulfillmentChoice" value="delivery">
             <span><b>Hand delivery</b><br><small>${handNote}</small></span>
           </label>
         </div>
-        <div id="pickupLocationChoices" class="methods" style="margin-top:10px">
-          ${locationOptions}
+        <div id="pickupLocationBlock" ${locations.length ? "" : "hidden"}>
+          <p class="local-subhead">Choose a pickup store</p>
+          <div id="pickupLocationChoices" class="methods">
+            ${locationOptions}
+          </div>
         </div>
       </div>
       <input type="hidden" name="fulfillment" id="fulfillmentValue" value="pickup">
@@ -649,8 +664,9 @@
     if (hidden) hidden.value = method;
     const local = $("localDetails");
     if (local) local.hidden = group !== "local";
-    const pickup = $("pickupLocationChoices");
-    if (pickup) pickup.hidden = !(group === "local" && method === "pickup" && pickup.children.length > 0);
+    const pickup = $("pickupLocationBlock");
+    const pickupChoices = $("pickupLocationChoices");
+    if (pickup) pickup.hidden = !(group === "local" && method === "pickup" && pickupChoices && pickupChoices.children.length > 0);
   }
   function selectMethod(method) {
     if (method === "mail") {
