@@ -87,6 +87,7 @@
   .file-retry { background: none; border: none; color: var(--magenta); font-size: 12px; text-decoration: underline; cursor: pointer; padding: 2px 4px; flex-shrink: 0; }
 
   .methods { display: grid; gap: 10px; }
+  .local-details { display: grid; gap: 10px; margin-top: 2px; }
   .method { display: flex; gap: .7rem; align-items: flex-start; border: 1.5px solid var(--rule); border-radius: 9px; padding: 13px 14px; cursor: pointer; }
   .method.selected { border-color: var(--magenta); background: var(--magenta-soft); }
   .method input { width: auto; margin-top: 3px; accent-color: var(--magenta); }
@@ -134,6 +135,14 @@
   .summary-line > :last-child, .summary-total > :last-child { text-align: right; font-variant-numeric: tabular-nums; color: var(--ink); }
   .summary-line > :last-child { font-weight: 600; }
   .summary-total { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: baseline; padding-top: 12px; margin-top: 8px; border-top: 1.5px solid var(--rule); font-weight: 800; font-size: 18px; }
+  .summary-cta { padding: 0 20px 20px; }
+  .summary-cta button { width: 100%; }
+  .paying .summary-cta { display: none; }
+  @media (max-width: 899px) {
+    .checkout { padding-bottom: 140px; }
+    .summary { position: fixed; left: 12px; right: 12px; bottom: 12px; z-index: 40; max-height: calc(100vh - 24px); }
+    .summary-body { max-height: 55vh; overflow-y: auto; }
+  }
 
   .hidden { display: none; }
   #msg { font-size: 15px; margin-top: 4px; }
@@ -154,7 +163,7 @@
   .local-nudge .nudge-actions button { padding: 9px 14px; font-size: 13.5px; }
   .local-nudge .nudge-actions button.secondary { background: var(--paper); color: var(--ink); border: 1.5px solid var(--rule); }
   .local-nudge .nudge-actions button.secondary:hover { background: var(--magenta-soft); border-color: var(--magenta); }
-  #addrStructured[hidden] { display: none !important; }
+  #addrStructured[hidden], #localDetails[hidden], #pickupLocationChoices[hidden] { display: none !important; }
   .rights-check { display: flex; gap: 10px; align-items: flex-start; margin: 18px 0 4px; font-size: 15px; color: var(--ink-soft); }
   .rights-check input { width: auto; flex: none; margin-top: 4px; accent-color: var(--magenta); }
   .rights-check label { cursor: pointer; }
@@ -339,9 +348,6 @@
             <a href="/terms.html" target="_blank" rel="noopener">Terms of Service</a>.
           </div>
         </div>
-        <div class="actions">
-          <button type="submit">Review &amp; pay</button>
-        </div>
         <p id="msg" class="hint"></p>
         <div id="orderIdBox" class="hidden order-id-box">
           Order number: <b id="orderIdText"></b>
@@ -359,6 +365,9 @@
       </button>
       <div class="summary-head-desktop">Order summary</div>
       <div class="summary-body collapsed" id="summaryBody"><div id="total"></div></div>
+      <div class="summary-cta">
+        <button type="submit" id="summarySubmit" form="orderForm">Review &amp; pay</button>
+      </div>
     </aside>
   </div>
 </div>
@@ -371,7 +380,7 @@
   const API_BASE = "https://api.pringleprints.ca";
 
   const $ = (id) => document.getElementById(id);
-  const labels = { pickup: "Local pickup", delivery: "Local delivery (Ottawa)", mail: "Mail" };
+  const labels = { pickup: "Pickup", delivery: "Hand delivery", mail: "Shipping" };
   let CFG = null;
 
   (async () => {
@@ -519,26 +528,57 @@
   }
 
   function renderMethods() {
-    $("methods").innerHTML = CFG.methods.map((m, i) => {
-      let note;
-      if (CFG.shipping) {
-        // Live shipping: mail is priced from the quote (shown later as
-        // "Calculated at checkout"), while pickup and local delivery are free.
-        note = m === "mail" ? "Calculated at checkout" : "Free";
-      } else {
-        const fee = CFG.fees[m] || 0;
-        note = fee === 0 ? "Free" : money(fee);
-        if (m === "delivery" && CFG.freeDeliveryOverCents > 0)
-          note += ` · free over ${money(CFG.freeDeliveryOverCents)}`;
-      }
+    const fees = CFG.fees || {};
+    const localFree = !fees.pickup && !fees.delivery;
+    const localNote = localFree ? "Free in Ottawa–Gatineau" : "Pickup or local delivery";
+    const handNote = fees.delivery ? money(fees.delivery) : "Free within Ottawa–Gatineau";
+    const mailNote = CFG.shipping ? "Calculated at checkout" : (fees.mail ? money(fees.mail) : "Free");
+    const locations = Array.isArray(CFG.pickupLocations) ? CFG.pickupLocations : [];
+    const locationOptions = locations.map((loc, i) => {
+      const address = [loc.address, loc.city || "Ottawa", loc.province || "ON", loc.postalCode]
+        .filter(Boolean).join(", ");
       return `<label class="method">
-        <input type="radio" name="fulfillment" value="${m}" ${i === 0 ? "checked" : ""}>
-        <span><b>${labels[m] || m}</b><br><small>${note}</small></span>
+        <input type="radio" name="pickupLocation" value="${escapeHtml(loc.id)}" ${i === 0 ? "checked" : ""}>
+        <span><b>${escapeHtml(loc.name)}</b><br><small>${escapeHtml(address)}</small>${
+          loc.hours ? `<br><small>${escapeHtml(loc.hours)}</small>` : ""
+        }${loc.note ? `<br><small>${escapeHtml(loc.note)}</small>` : ""}</span>
       </label>`;
     }).join("");
-    $("methods").addEventListener("change", onMethodChange);
+    $("methods").innerHTML = `
+      <div id="topMethods" class="methods">
+        <label class="method" data-group="local">
+          <input type="radio" name="fulfillmentGroup" value="local" checked>
+          <span><b>Local pickup or delivery</b><br><small>${localNote}</small></span>
+        </label>
+        <label class="method" data-group="mail">
+          <input type="radio" name="fulfillmentGroup" value="mail">
+          <span><b>Ship Canada-wide</b><br><small>${mailNote}</small></span>
+        </label>
+      </div>
+      <div id="localDetails" class="local-details">
+        <div class="methods" id="localChoices">
+          <label class="method" data-choice="pickup">
+            <input type="radio" name="fulfillmentChoice" value="pickup" checked>
+            <span><b>Pickup</b><br><small>${locations.length ? "Choose one of " + locations.length + " Ottawa game stores" : "Pickup location confirmed by email"}</small></span>
+          </label>
+          <label class="method" data-choice="delivery">
+            <input type="radio" name="fulfillmentChoice" value="delivery">
+            <span><b>Hand delivery</b><br><small>${handNote}</small></span>
+          </label>
+        </div>
+        <div id="pickupLocationChoices" class="methods" style="margin-top:10px">
+          ${locationOptions}
+        </div>
+      </div>
+      <input type="hidden" name="fulfillment" id="fulfillmentValue" value="pickup">
+    `;
+    $("methods").addEventListener("change", () => {
+      syncFulfillment();
+      onMethodChange();
+    });
     $("batchSize").addEventListener("change", () => { recalc(); if (CFG.shipping) scheduleQuote(); });
     $("finish").addEventListener("change", recalc);
+    syncFulfillment();
     onMethodChange();
   }
 
@@ -590,9 +630,39 @@
     reflectDeckboxButtons();
   }
 
-  function chosenMethod() {
-    const el = document.querySelector('input[name="fulfillment"]:checked');
+  function chosenGroup() {
+    const el = document.querySelector('input[name="fulfillmentGroup"]:checked');
+    return el ? el.value : "local";
+  }
+  function chosenLocalChoice() {
+    const el = document.querySelector('input[name="fulfillmentChoice"]:checked');
     return el ? el.value : "pickup";
+  }
+  function chosenMethod() {
+    const el = $("fulfillmentValue");
+    return el ? el.value : "pickup";
+  }
+  function syncFulfillment() {
+    const group = chosenGroup();
+    const method = group === "mail" ? "mail" : chosenLocalChoice();
+    const hidden = $("fulfillmentValue");
+    if (hidden) hidden.value = method;
+    const local = $("localDetails");
+    if (local) local.hidden = group !== "local";
+    const pickup = $("pickupLocationChoices");
+    if (pickup) pickup.hidden = !(group === "local" && method === "pickup" && pickup.children.length > 0);
+  }
+  function selectMethod(method) {
+    if (method === "mail") {
+      const group = document.querySelector('input[name="fulfillmentGroup"][value="mail"]');
+      if (group) group.checked = true;
+    } else {
+      const group = document.querySelector('input[name="fulfillmentGroup"][value="local"]');
+      const choice = document.querySelector(`input[name="fulfillmentChoice"][value="${method}"]`);
+      if (group) group.checked = true;
+      if (choice) choice.checked = true;
+    }
+    syncFulfillment();
   }
 
   function feeFor(method, baseCents) {
@@ -602,9 +672,17 @@
   }
 
   function highlightSelectedMethod() {
-    document.querySelectorAll(".method").forEach((el) => {
-      const radio = el.querySelector('input[name="fulfillment"]');
-      el.classList.toggle("selected", !!radio && radio.checked);
+    const group = chosenGroup();
+    const choice = chosenLocalChoice();
+    document.querySelectorAll("#topMethods .method").forEach((el) => {
+      el.classList.toggle("selected", el.dataset.group === group);
+    });
+    document.querySelectorAll("#localChoices .method").forEach((el) => {
+      el.classList.toggle("selected", group === "local" && el.dataset.choice === choice);
+    });
+    document.querySelectorAll("#pickupLocationChoices .method").forEach((el) => {
+      const radio = el.querySelector('input[name="pickupLocation"]');
+      el.classList.toggle("selected", group === "local" && choice === "pickup" && !!radio && radio.checked);
     });
   }
 
@@ -1129,8 +1207,7 @@
   function onNudgeClick(meth) {
     // Keep the address that is already in the fields; drop the quote so the
     // customer re-chooses a method without losing their address.
-    const r = document.querySelector(`input[name="fulfillment"][value="${meth}"]`);
-    if (r) r.checked = true;
+    selectMethod(meth);
     clearQuote();
     onMethodChange();
   }
@@ -1143,7 +1220,7 @@
   // Mail cannot submit without a live, matching quote, so block the button while
   // it is loading, failed, or simply has no options yet.
   function updateSubmitLocked() {
-    const btn = $("orderForm").querySelector('button[type="submit"]');
+    const btn = $("summarySubmit");
     if (!btn) return;
     let locked = false;
     if (CFG.shipping && chosenMethod() === "mail") {
@@ -1451,6 +1528,7 @@
       existing.remove();
     }
     appendHelcimPayIframe(token);
+    document.body.classList.add("paying");
   }
 
   // Guard the CDN helper so the flow still works even if start.js never loaded;
@@ -1459,6 +1537,7 @@
     if (typeof removeHelcimPayIframe === "function") removeHelcimPayIframe();
     const existing = document.getElementById("helcimPayIframe");
     if (existing) existing.remove();
+    document.body.classList.remove("paying");
   }
 
   window.addEventListener("message", (event) => {
@@ -1469,7 +1548,7 @@
     const helcimId = "helcim-pay-js-" + o.checkoutToken;
     if (event.data && event.data.eventName === helcimId) {
       const msg = $("msg");
-      const submitBtn = $("orderForm").querySelector('button[type="submit"]');
+      const submitBtn = $("summarySubmit");
       if (event.data.eventStatus === "SUCCESS") {
         removeHelcimFrame();
         msg.className = "ok";
@@ -1501,7 +1580,7 @@
   $("orderForm").addEventListener("submit", async (e) => {
     e.preventDefault();
     const msg = $("msg");
-    const submitBtn = e.submitter || $("orderForm").querySelector('button[type="submit"]');
+    const submitBtn = e.submitter || $("summarySubmit");
     msg.className = "hint";
     msg.textContent = "Creating your order…";
     submitBtn.disabled = true;
