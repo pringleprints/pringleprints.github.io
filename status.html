@@ -131,8 +131,8 @@
       </li>`;
     }).join("");
 
-    const meetup = o.fulfillment === "pickup" && o.status === "ready-for-pickup" && o.pickupLocation
-      ? `<div class="meetup">📍 Meet at: ${escapeHtml(o.pickupLocation)}</div>` : "";
+    const meetup = o.fulfillment === "pickup" && o.pickupLocation
+      ? `<div class="meetup">${o.status === "ready-for-pickup" ? "📍 Meet at:" : "Pickup location:"} ${escapeHtml(o.pickupLocation)}</div>` : "";
 
     // Awaiting-payment copy is only for an unpaid, not-yet-cancelled order; a
     // cancelled one gets its own note instead.
