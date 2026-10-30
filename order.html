@@ -153,6 +153,10 @@
   .local-nudge .nudge-actions button.secondary { background: var(--paper); color: var(--ink); border: 1.5px solid var(--rule); }
   .local-nudge .nudge-actions button.secondary:hover { background: var(--magenta-soft); border-color: var(--magenta); }
   #addrStructured[hidden] { display: none !important; }
+  .rights-check { display: flex; gap: 10px; align-items: flex-start; margin: 18px 0 4px; font-size: 15px; color: var(--ink-soft); }
+  .rights-check input { width: auto; flex: none; margin-top: 4px; accent-color: var(--magenta); }
+  .rights-check label { cursor: pointer; }
+  .rights-check a { color: var(--ink); }
   footer { max-width: 1040px; margin: 0 auto; padding: 40px 16px 64px; font-family: var(--mono); font-size: 13px; color: var(--ink-soft); }
 </style>
 </head>
@@ -182,10 +186,6 @@
           <input type="file" name="pdf" accept=".pdf,application/pdf" hidden>
           <ul id="fileList" class="file-list"></ul>
           <p id="fileMsg" class="hint hidden"></p>
-          <label class="field" style="display:flex;flex-direction:row;align-items:flex-start;gap:10px;margin-top:14px">
-            <input type="checkbox" name="rights" value="true" required style="width:auto;margin-top:3px">
-            <span class="hint" style="color:var(--ink)">I confirm I own this artwork or have full authorization to use it, and I accept full responsibility for any copyright, trademark, or other claims arising from it.</span>
-          </label>
         </div>
       </section>
 
@@ -322,6 +322,13 @@
           </div>
           <p id="cashNote" class="hint" style="margin-top:.6rem" hidden>Cash is only available for pickup or local delivery.</p>
         </div>
+        <div class="rights-check">
+          <input type="checkbox" name="rights" id="rights" value="true" required>
+          <div>
+            <label for="rights">I confirm I own this artwork or have full authorization to use it, and I accept full responsibility for any copyright, trademark, or other claims arising from it, and I agree to the</label>
+            <a href="/terms.html" target="_blank" rel="noopener">Terms of Service</a>.
+          </div>
+        </div>
         <div class="actions">
           <button type="submit">Review &amp; pay</button>
         </div>
@@ -355,7 +362,7 @@
 </div>
 
 <footer>
-  Pringle Prints · orders@pringleprints.ca · printed &amp; cut in Ottawa–Gatineau, Canada
+  Pringle Prints · orders@pringleprints.ca · printed &amp; cut in Ottawa–Gatineau, Canada · <a href="/terms.html">Terms</a>
 </footer>
 
 <script>
