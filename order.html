@@ -182,6 +182,10 @@
           <input type="file" name="pdf" accept=".pdf,application/pdf" hidden>
           <ul id="fileList" class="file-list"></ul>
           <p id="fileMsg" class="hint hidden"></p>
+          <label class="field" style="display:flex;flex-direction:row;align-items:flex-start;gap:10px;margin-top:14px">
+            <input type="checkbox" name="rights" value="true" required style="width:auto;margin-top:3px">
+            <span class="hint" style="color:var(--ink)">I confirm I own this artwork or have permission to print it, and I accept legal responsibility for any copyright or trademark claims.</span>
+          </label>
         </div>
       </section>
 
@@ -719,7 +723,10 @@
       if (!el) return;
       el.addEventListener("input", () => {
         if (name === "postalCode") onPostalInput();
-        else scheduleQuote();
+        // Only the fields that carry the destination price (street for a PO box,
+        // city and postal) re-quote. Name, phone and province do not change the
+        // rate and must not burn the per-IP quote allowance while typing.
+        else if (name === "address" || name === "city") scheduleQuote();
       });
     });
     const postal = document.querySelector('[name="postalCode"]');
@@ -880,6 +887,9 @@
       if (seq !== quoteSeq) return; // a newer request superseded this one
       if (!res.ok) {
         quoteState.status = "error";
+        quoteState.message = res.status === 429
+          ? "Too many shipping lookups — wait a minute and try again."
+          : "Shipping quote unavailable — try again.";
       } else if (!Array.isArray(data.options) || data.options.length === 0) {
         clearQuote();
         quoteState.status = "none";
@@ -889,6 +899,7 @@
     } catch {
       if (seq !== quoteSeq) return;
       quoteState.status = "error";
+      quoteState.message = "Shipping quote unavailable — try again.";
     }
     renderQuoteOptions();
     updateSubmitLocked();
@@ -903,7 +914,7 @@
     // once options exist — never while calculating, failed, or empty.
     const tracking = $("trackingNote");
     if (st === "loading") { wrap.innerHTML = `<div class="quote-empty">Calculating shipping…</div>`; tracking.hidden = true; return; }
-    if (st === "error") { wrap.innerHTML = `<div class="quote-empty">Shipping quote unavailable — try again.</div>`; tracking.hidden = true; return; }
+    if (st === "error") { wrap.innerHTML = `<div class="quote-empty">${escapeHtml(quoteState.message || "Shipping quote unavailable — try again.")}</div>`; tracking.hidden = true; return; }
     if (st === "none") { wrap.innerHTML = `<div class="quote-empty">No shipping options for this address — choose pickup or local delivery, or contact us.</div>`; tracking.hidden = true; return; }
     if (st === "idle") { wrap.innerHTML = `<div class="quote-empty">Calculated at checkout</div>`; tracking.hidden = true; return; }
     tracking.hidden = false;
