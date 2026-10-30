@@ -166,7 +166,7 @@
   <div class="page-head">
     <p class="eyebrow">Place an order</p>
     <h1>Order form</h1>
-    <p class="lede">Pay securely by card, or use Interac e-Transfer at checkout — just paste your order number into the transfer message so we can match it automatically. Prices shown include tax.</p>
+    <p class="lede">Pay by card, or choose Interac e-Transfer and send it after you submit. Include your order number in the message so we can match your payment. Cash is available for pickup and local delivery. Prices include tax.</p>
   </div>
 
   <div class="checkout">
@@ -232,8 +232,8 @@
           </div>
 
           <label class="field">
-            <span class="label-text">Notes / special requests</span>
-            <span class="hint">Anything we should know — e.g. “foil the commanders only,” “laminate the tokens only,” quantity details, timing.</span>
+            <span class="label-text">Notes or special requests</span>
+            <span class="hint">Anything we should know? For example, “foil the commanders only,” “laminate the tokens only,” or a deadline.</span>
             <textarea name="details" id="notes" rows="3"></textarea>
           </label>
         </div>
@@ -242,7 +242,7 @@
       <section class="card" aria-labelledby="stepDelivery">
         <h2 class="card-title" id="stepDelivery"><span class="step-num" aria-hidden="true">3</span>Delivery</h2>
         <div class="field">
-          <span class="label-text">How would you like it?</span>
+          <span class="label-text">How would you like to receive it?</span>
           <div class="methods" id="methods"><!-- filled from /config --></div>
         </div>
         <!-- Old single-line address, kept for the flag-off (no shipping) path.
@@ -309,7 +309,7 @@
           <div class="methods" id="payMethods">
             <label class="method">
               <input type="radio" name="paymentMethod" value="card" checked>
-              <span><b>Card</b><br><small>Pay now — confirmed straight away</small></span>
+              <span><b>Card</b><br><small>Pay now — confirmed right away</small></span>
             </label>
             <label class="method">
               <input type="radio" name="paymentMethod" value="etransfer">
@@ -317,15 +317,15 @@
             </label>
             <label class="method" id="cashOption">
               <input type="radio" name="paymentMethod" value="cash">
-              <span><b>Cash</b><br><small>Pay when you collect</small></span>
+              <span><b>Cash</b><br><small>Pay on pickup or delivery</small></span>
             </label>
           </div>
-          <p id="cashNote" class="hint" style="margin-top:.6rem" hidden>Cash is only available for pickup or local delivery.</p>
+          <p id="cashNote" class="hint" style="margin-top:.6rem" hidden>Cash is only available for pickup and local delivery.</p>
         </div>
         <div class="rights-check">
           <input type="checkbox" name="rights" id="rights" value="true" required>
           <div>
-            <label for="rights">I confirm I own this artwork or have full authorization to use it, and I accept full responsibility for any copyright, trademark, or other claims arising from it, and I agree to the</label>
+            <label for="rights">I confirm I own this artwork or have full authorization to use it. I accept full responsibility for any copyright, trademark, or other claims arising from it, and I agree to the</label>
             <a href="/terms.html" target="_blank" rel="noopener">Terms of Service</a>.
           </div>
         </div>
@@ -895,8 +895,8 @@
       if (!res.ok) {
         quoteState.status = "error";
         quoteState.message = res.status === 429
-          ? "Too many shipping lookups — wait a minute and try again."
-          : "Shipping quote unavailable — try again.";
+          ? "Too many shipping lookups. Wait a minute and try again."
+          : "We couldn't get a shipping quote. Try again.";
       } else if (!Array.isArray(data.options) || data.options.length === 0) {
         clearQuote();
         quoteState.status = "none";
@@ -906,7 +906,7 @@
     } catch {
       if (seq !== quoteSeq) return;
       quoteState.status = "error";
-      quoteState.message = "Shipping quote unavailable — try again.";
+      quoteState.message = "We couldn't get a shipping quote. Try again.";
     }
     renderQuoteOptions();
     updateSubmitLocked();
@@ -921,8 +921,8 @@
     // once options exist — never while calculating, failed, or empty.
     const tracking = $("trackingNote");
     if (st === "loading") { wrap.innerHTML = `<div class="quote-empty">Calculating shipping…</div>`; tracking.hidden = true; return; }
-    if (st === "error") { wrap.innerHTML = `<div class="quote-empty">${escapeHtml(quoteState.message || "Shipping quote unavailable — try again.")}</div>`; tracking.hidden = true; return; }
-    if (st === "none") { wrap.innerHTML = `<div class="quote-empty">No shipping options for this address — choose pickup or local delivery, or contact us.</div>`; tracking.hidden = true; return; }
+    if (st === "error") { wrap.innerHTML = `<div class="quote-empty">${escapeHtml(quoteState.message || "We couldn't get a shipping quote. Try again.")}</div>`; tracking.hidden = true; return; }
+    if (st === "none") { wrap.innerHTML = `<div class="quote-empty">No shipping options for this address. Choose pickup or local delivery, or contact us.</div>`; tracking.hidden = true; return; }
     if (st === "idle") { wrap.innerHTML = `<div class="quote-empty">Calculated at checkout</div>`; tracking.hidden = true; return; }
     tracking.hidden = false;
     wrap.innerHTML = quoteState.options.map((o, i) => {
@@ -1096,16 +1096,16 @@
     if (m === "mail" && postal && local) {
       nud.hidden = false;
       nud.className = "local-nudge";
-      nud.innerHTML = `<strong>You're in Ottawa/Gatineau. Local pickup and local delivery are free.</strong>` +
+      nud.innerHTML = `<strong>You're in Ottawa–Gatineau. Local pickup and delivery are free.</strong>` +
         `<div class="nudge-actions">
-          <button type="button" data-nudge="delivery">Switch to free local delivery</button>
-          <button type="button" data-nudge="pickup" class="secondary">Switch to pickup</button>
+          <button type="button" data-nudge="delivery">Use free local delivery</button>
+          <button type="button" data-nudge="pickup" class="secondary">Use pickup</button>
         </div>`;
       nud.querySelectorAll("[data-nudge]").forEach((b) => b.addEventListener("click", () => onNudgeClick(b.dataset.nudge)));
     } else if (m === "delivery" && postal && !local) {
       nud.hidden = false;
       nud.className = "local-nudge warn";
-      nud.innerHTML = `<strong>Local delivery is only available in Ottawa/Gatineau — choose mail.</strong>`;
+      nud.innerHTML = `<strong>Local delivery is only available in Ottawa–Gatineau. Choose mail instead.</strong>`;
     } else {
       nud.hidden = true;
     }
@@ -1428,7 +1428,7 @@
       // Keep the order number visible so the customer can still reach us.
       const msg = $("msg");
       msg.className = "err";
-      msg.textContent = "The payment window could not be opened just now — please contact us and quote your order number.";
+      msg.textContent = "We couldn't open the payment window. Please contact us and quote your order number.";
       return;
     }
     const existing = document.getElementById("helcimPayIframe");
@@ -1459,8 +1459,8 @@
       if (event.data.eventStatus === "SUCCESS") {
         removeHelcimFrame();
         msg.className = "ok";
-        msg.innerHTML = `Paid! Order <b>${o.orderId}</b> received.
-                         <a href="${o.statusUrl}">Track it here.</a>`;
+        msg.innerHTML = `Payment received. Order <b>${o.orderId}</b> is confirmed.
+                         <a href="${o.statusUrl}">Track your order</a>.`;
         // Permanently — there is nothing left to pay on this order.
         if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = "Order placed"; }
       } else if (event.data.eventStatus === "ABORTED") {
@@ -1468,9 +1468,9 @@
         msg.className = "err";
         // The order stays saved and the submit button stays disabled; the only
         // way to pay now is the button below, which reopens the same token.
-        msg.innerHTML = `Payment was cancelled. Order <b>${o.orderId}</b> is saved and unpaid.
+        msg.innerHTML = `Payment was cancelled. Order <b>${o.orderId}</b> is saved but unpaid.
                          <button type="button" id="tryPaymentAgain">Try payment again</button>
-                         <br><a href="${o.statusUrl}">Track it here.</a>`;
+                         <br><a href="${o.statusUrl}">Track your order</a>.`;
         if (submitBtn) submitBtn.disabled = true;
       }
     }
@@ -1505,7 +1505,7 @@
         const statusUrl = `/status.html?id=${placedOrder.orderId}&t=${placedOrder.statusToken}`;
         msg.className = "ok";
         msg.innerHTML = `Order <b>${placedOrder.orderId}</b> is already placed.
-                         <a href="${statusUrl}">Track it here.</a>`;
+                         <a href="${statusUrl}">Track your order</a>.`;
       }
       return;
     }
@@ -1526,7 +1526,7 @@
     const failed = ["pdf", "xml"].map((k) => UPLOADS[k]).filter((r) => r && r.state === "failed");
     if (failed.length) {
       msg.className = "err";
-      msg.textContent = "Your file didn't finish uploading — use Retry above, or email it to orders@pringleprints.ca.";
+      msg.textContent = "Your file didn't finish uploading. Use Retry above, or email it to orders@pringleprints.ca.";
       submitBtn.disabled = false;
       return;
     }
@@ -1558,11 +1558,11 @@
       submitBtn.disabled = false;
       if (quoteState.status !== "ok") {
         msg.className = "hint";
-        msg.textContent = "Your shipping quote could not be refreshed — please review the options and submit again.";
+        msg.textContent = "We couldn't refresh your shipping quote. Review the options and submit again.";
         return;
       }
       msg.className = "hint";
-      msg.textContent = "Shipping price changed — please review and submit again.";
+      msg.textContent = "The shipping price changed. Review it and submit again.";
       return;
     }
 
@@ -1639,7 +1639,7 @@
         renderQuoteOptions();
         updateSubmitLocked();
         msg.className = "hint";
-        msg.textContent = "Shipping price changed — please review the updated price and submit again.";
+        msg.textContent = "The shipping price changed. Review the new price and submit again.";
         submitBtn.disabled = false;
         return;
       }
@@ -1664,8 +1664,8 @@
 
     if (data.free) {
       msg.className = "ok";
-      msg.innerHTML = `This one's on us! Order <b>${data.orderId}</b> is in.
-                       <a href="${statusUrl}">Track it here.</a>`;
+      msg.innerHTML = `This one's on us! Order <b>${data.orderId}</b> is confirmed.
+                       <a href="${statusUrl}">Track your order</a>.`;
       submitBtn.textContent = "Order placed";
       return;
     }
@@ -1676,19 +1676,20 @@
 
     if (data.paymentMethod === "cash") {
       msg.className = "ok";
-      msg.innerHTML = `Order <b>${data.orderId}</b> is in. Nothing to pay now —
-                       we'll take ${money(data.totalCents)} in cash when you collect.
-                       <a href="${statusUrl}">Track it here.</a>`;
+      msg.innerHTML = `Order <b>${data.orderId}</b> is confirmed. Nothing to pay now.
+                       We'll take ${money(data.totalCents)} in cash when you receive your order.
+                       <a href="${statusUrl}">Track your order</a>.`;
       submitBtn.textContent = "Order placed";
       return;
     }
 
     if (data.paymentMethod === "etransfer") {
       msg.className = "ok";
-      msg.innerHTML = `Order <b>${data.orderId}</b> is in. Send ${money(data.totalCents)} by Interac e-Transfer to
-                       <b>${data.etransferAddress}</b>, with the order number above in the message so we can match it.
-                       <a href="${statusUrl}">Track it here.</a>`;
-      $("etransferInfo").textContent = "Nothing prints until the transfer arrives — we'll email you the moment it does.";
+      msg.innerHTML = `Order <b>${data.orderId}</b> is confirmed. Send ${money(data.totalCents)} by Interac e-Transfer to
+                       <b>${data.etransferAddress}</b>, and put your order number in the message so we can match your payment.
+                       We'll start printing when the transfer arrives.
+                       <a href="${statusUrl}">Track your order</a>.`;
+      $("etransferInfo").textContent = "We'll email you when the transfer arrives.";
       submitBtn.textContent = "Order placed";
       return;
     }
@@ -1706,8 +1707,8 @@
     // order number and status link visible so the customer can still reach us.
     if (!data.checkoutToken) {
       msg.className = "err";
-      msg.innerHTML = `We took your order <b>${data.orderId}</b> but couldn't open payment just now.
-                       <a href="${statusUrl}">Track it here.</a>`;
+      msg.innerHTML = `Your order <b>${data.orderId}</b> is saved, but we couldn't open payment.
+                       <a href="${statusUrl}">Track your order</a> or contact us.`;
       // The button is already disabled; label it so the state is unambiguous.
       submitBtn.textContent = "Order placed";
       return;
