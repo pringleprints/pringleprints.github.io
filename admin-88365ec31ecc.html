@@ -2527,6 +2527,8 @@ var qrcode = function() {
         }));
       list.querySelectorAll("[data-markpaid]").forEach((b) =>
         b.addEventListener("click", () => markPaid(b.dataset.markpaid, b.dataset.intent)));
+      list.querySelectorAll("[data-label]").forEach((b) =>
+        b.addEventListener("click", () => getLabel(b.dataset.label)));
       list.querySelectorAll("[data-cancel]").forEach((b) =>
         b.addEventListener("click", () => {
           const box = list.querySelector(`[data-silent="${b.dataset.cancel}"]`);
@@ -2671,6 +2673,15 @@ var qrcode = function() {
                 : needsConfirm ? `<span class="flag">e-transfer — verify & confirm</span>`
                 : `<span class="flag">awaiting payment</span>`;
       const ship = o.shippingCents ? ` + ${money(o.shippingCents)} ship` : "";
+      // The projection exposes carrier/service (never the gross rate), so name
+      // them alongside the ship charge. Absent on pickup/local orders.
+      const shipLine = o.shipping
+        ? ` · ${money(o.basePriceCents)}${ship} · ${escapeHtml(o.shipping.carrier)} · ${escapeHtml(o.shipping.service)}`
+        : ship ? ` · ${money(o.basePriceCents)}${ship}` : "";
+      // A label can only be bought for a paid, shipped order that is not
+      // cancelled. The endpoint is idempotent, so the button is safe to re-click.
+      const labelBtn = (o.paid && o.shipping && o.status !== "cancelled")
+        ? `<button class="confirm" data-label="${o.id}">Get label</button>` : "";
       const method = `<span class="pill">${METHOD_LABEL[o.fulfillment] || o.fulfillment || "—"}</span>`;
       const files = (o.files || []).map((f) => f.archivedUrl
         ? `<a href="${f.archivedUrl}" target="_blank" rel="noopener" title="Archived to Proton Drive">⬇ ${f.field.toUpperCase()}</a>`
@@ -2691,12 +2702,12 @@ var qrcode = function() {
           <span class="badge b-${o.status}">${o.status}</span>
           <span class="amt">${money(o.amountCents)}</span>
         </div>
-        <div class="row muted" style="margin-top:.2rem">${method} ${escapeHtml(o.email)} · ${when(o.createdAt)}${ship ? ` · ${money(o.basePriceCents)}${ship}` : ""}${addOnsText}</div>
+        <div class="row muted" style="margin-top:.2rem">${method} ${escapeHtml(o.email)} · ${when(o.createdAt)}${shipLine}${addOnsText}</div>
         ${o.address ? `<div class="muted">📍 ${escapeHtml(o.address)}</div>` : ""}
         ${o.fulfillment === "pickup" && o.pickupLocation ? `<div class="muted">📍 Meet at: ${escapeHtml(o.pickupLocation)}</div>` : ""}
         ${o.details ? `<div class="muted">“${escapeHtml(o.details)}”</div>` : ""}
         <div class="row" style="margin-top:.4rem">${pay} ${files}</div>
-        <div class="actions">${o.status === "cancelled" ? "" : `${advanceBtn} ${jump}`}
+        <div class="actions">${o.status === "cancelled" ? "" : `${advanceBtn} ${jump} ${labelBtn}`}
           ${o.status === "cancelled" ? `<span class="muted">cancelled${o.refundedAt ? " · refunded" : ""}</span>`
             : `${o.paid ? "" : `<button class="confirm" data-markpaid="${o.id}" data-intent="${o.paymentIntent || ""}">Mark paid</button>`}
                 <label class="muted" style="display:inline-flex;align-items:center;gap:.3rem;font-size:.85rem">
@@ -2792,6 +2803,37 @@ var qrcode = function() {
         URL.revokeObjectURL(url);
       } catch (e) {
         setStatus("Could not download file.", "err");
+      }
+    }
+
+    // Buy (or reuse) a shipping label and open its 4x6 PDF. /admin/ship is
+    // idempotent: once a label exists it is returned as-is with no second
+    // charge, so re-clicking simply re-opens the same PDF.
+    async function getLabel(orderId) {
+      setStatus("Preparing shipping label…");
+      try {
+        const ship = await fetch(`${API}/admin/ship`, {
+          method: "POST",
+          headers: { ...auth(), "content-type": "application/json" },
+          body: JSON.stringify({ orderId })
+        });
+        if (!ship.ok) {
+          const err = await ship.json().catch(() => ({}));
+          throw new Error(ship.status === 401 ? "Unauthorized — check your token." : (err.error || "Could not prepare that label."));
+        }
+        const data = await ship.json();
+        const labelRes = await fetch(`${API}${data.labelUrl || "/admin/label/" + encodeURIComponent(orderId)}`, { headers: auth() });
+        if (!labelRes.ok) throw new Error("Could not download the label.");
+        const blob = await labelRes.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url; a.download = `${orderId}-label.pdf`;
+        document.body.appendChild(a); a.click(); a.remove();
+        URL.revokeObjectURL(url);
+        const track = data.trackingNumber ? ` (tracking ${data.trackingNumber})` : "";
+        setStatus(`Label ready${track}.`, "ok");
+      } catch (e) {
+        setStatus(e.message || "Could not prepare the label.", "err");
       }
     }
 

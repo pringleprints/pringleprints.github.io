@@ -131,6 +131,18 @@
   a { color: var(--ink); text-decoration-color: var(--magenta); text-decoration-thickness: 2px; }
   a:hover { color: var(--magenta); }
   .order-id-box { background: var(--paper); border: 1.5px solid var(--ink); border-radius: 10px; padding: 16px; margin-top: 4px; }
+
+  .quote-note { font-size: 13.5px; color: var(--ink-soft); padding: 2px 0; }
+  .quote-empty { font-size: 13.5px; color: var(--ink-soft); padding: 18px 4px; }
+  .quote-empty:last-child { margin-bottom: 0; }
+  .local-nudge { border-radius: 9px; padding: 12px 14px; font-size: 13.5px; background: var(--magenta-soft); color: var(--magenta-dark); }
+  .local-nudge.warn { background: var(--paper-sunk); color: var(--ink); }
+  .local-nudge strong { display: block; margin-bottom: 8px; font-weight: 700; }
+  .local-nudge .nudge-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+  .local-nudge .nudge-actions button { padding: 9px 14px; font-size: 13.5px; }
+  .local-nudge .nudge-actions button.secondary { background: var(--paper); color: var(--ink); border: 1.5px solid var(--rule); }
+  .local-nudge .nudge-actions button.secondary:hover { background: var(--magenta-soft); border-color: var(--magenta); }
+  #addrStructured[hidden] { display: none !important; }
   footer { max-width: 1040px; margin: 0 auto; padding: 40px 16px 64px; font-family: var(--mono); font-size: 13px; color: var(--ink-soft); }
 </style>
 </head>
@@ -221,6 +233,13 @@
             <span class="chip" id="methodTriggerFee"></span>
           </button>
         </div>
+        <!-- Flag-on only: the live quote options and the local nudge. Hidden by
+             default so they never show or submit on an unconfigured deploy. -->
+        <div id="quotePanel" class="hidden" style="margin-top:12px">
+          <span class="label-text">Shipping</span>
+          <div id="quoteOptions" class="methods" style="margin-top:6px"></div>
+        </div>
+        <div id="localNudge" class="hidden" style="margin-top:12px"></div>
       </section>
 
       <section class="card" aria-labelledby="stepPay">
@@ -277,6 +296,40 @@
             <textarea name="address" rows="2" placeholder="Street, unit, city, postal code"></textarea>
             <p id="modalAddrErr" class="hint hidden"></p>
           </div>
+          <!-- Flag-on only (when /config advertises shipping) this structured
+               block is shown and the single textarea above is removed, so the
+               submitted fields are exactly the structured ones. While hidden it
+               is inert: a descendant of a [hidden] element is never submitted,
+               keeping the flag-off payload byte-identical. -->
+          <div id="addrStructured" class="field" style="margin-top:14px;display:none;gap:10px;grid-template-columns:1fr" hidden>
+            <label class="field">
+              <span class="label-text">Recipient name</span>
+              <input type="text" name="name" autocomplete="name">
+            </label>
+            <label class="field">
+              <span class="label-text" id="addrStreetLabel">Street address</span>
+              <input type="text" name="address" autocomplete="street-address" placeholder="Street address, unit">
+            </label>
+            <div class="field" style="display:grid;gap:8px;grid-template-columns:1fr 120px 160px">
+              <label class="field">
+                <span class="label-text">City</span>
+                <input type="text" name="city" autocomplete="address-level2">
+              </label>
+              <label class="field">
+                <span class="label-text">Province</span>
+                <select name="province" autocomplete="address-level1"></select>
+              </label>
+              <label class="field">
+                <span class="label-text">Postal code</span>
+                <input type="text" name="postalCode" inputmode="text" autocomplete="postal-code" placeholder="K1A 1A1">
+              </label>
+            </div>
+            <label class="field">
+              <span class="label-text">Phone</span>
+              <input type="tel" name="phone" autocomplete="tel">
+            </label>
+            <p id="modalAddrErr" class="hint hidden"></p>
+          </div>
           <div class="modal-foot">
             <button type="button" id="modalConfirmBtn">Confirm</button>
           </div>
@@ -316,10 +369,14 @@
     applyShopState();
     renderPrices();
     await loadCoupon();
+    buildAddressUI();
+    wireAddressFields();
     renderMethods();
     syncExtras();
+    updateQuoteVisibility();
     recalc();
     syncCashOption();
+    updateSubmitLocked();
 
   })();
 
@@ -385,6 +442,7 @@
     if (input.value.trim() === "" || isNaN(n)) n = 0; // empty reads as zero
     input.value = String(Math.max(0, Math.min(99, n))); // clamp to the 0–99 range
     recalc();
+    if (CFG.shipping) scheduleQuote(); // deckboxes change the mail rate
   });
 
   function couponCents() {
@@ -436,7 +494,7 @@
       </label>`;
     }).join("");
     $("methods").addEventListener("change", onMethodChange);
-    $("batchSize").addEventListener("change", recalc);
+    $("batchSize").addEventListener("change", () => { recalc(); if (CFG.shipping) scheduleQuote(); });
     $("finish").addEventListener("change", recalc);
     onMethodChange();
   }
@@ -519,17 +577,39 @@
     const m = chosenMethod();
     syncCashOption();
     const needsAddr = m === "delivery" || m === "mail";
-    $("addressWrap").classList.toggle("hidden", !needsAddr);
-    $("addressLabel").textContent = m === "mail" ? "Mailing address" : "Delivery address";
+    if (!CFG.shipping) {
+      $("addressWrap").classList.toggle("hidden", !needsAddr);
+      $("addressLabel").textContent = m === "mail" ? "Mailing address" : "Delivery address";
+      document.querySelector('[name="address"]').required = needsAddr;
+      highlightSelectedMethod();
+      recalc();
+      return;
+    }
+    // Flag-on: the structured block replaces the textarea (removed by
+    // buildAddressUI); street is required for both mail and delivery.
+    $("addrStructured").hidden = !needsAddr;
+    $("addrStructured").style.display = needsAddr ? "grid" : "none";
+    document.getElementById("addrStreetLabel").textContent = m === "mail" ? "Mailing address" : "Delivery address";
     document.querySelector('[name="address"]').required = needsAddr;
     highlightSelectedMethod();
+    // Leaving mail drops the quote: pickup and local delivery need none.
+    // Arriving at mail re-quotes so the rate tracks the current batch/deckboxes.
+    if (m !== "mail") { clearQuote(); renderQuoteOptions(); }
+    else scheduleQuote();
+    updateQuoteVisibility();
+    renderLocalNudge();
     recalc();
+    updateSubmitLocked();
   }
 
   function recalc() {
     const base = baseCents();
     const method = chosenMethod();
-    const fee = feeFor(method, base);
+    let fee = feeFor(method, base);
+    // When live shipping is active the flat mail fee is dropped: the total and
+    // the trigger chip carry the selected net for mail and nothing for
+    // pickup/local delivery, so the sum matches the shipping line below.
+    if (CFG.shipping) fee = method === "mail" ? selectedShippingNet() : 0;
     const discount = couponCents();
     const addOns = addOnsCents();
     const total = Math.max(0, base - discount) + addOns + fee;
@@ -547,12 +627,304 @@
       `<div class="summary-line"><span>${batchLabel}</span></div>` +
       `<div class="summary-line"><span>${finishLabel}</span></div>` +
       extrasLines.join("") +
-      `<div class="summary-line"><span>${labels[method] || method}</span><b>${fee === 0 ? "Free" : money(fee)}</b></div>` +
+      (CFG.shipping
+        ? `<div class="summary-line"><span>${labels[method] || method}</span><b>${shippingValueFor(method)}</b></div>`
+        : `<div class="summary-line"><span>${labels[method] || method}</span><b>${fee === 0 ? "Free" : money(fee)}</b></div>`) +
       (discount ? `<div class="summary-line"><span>Coupon</span><b>-${money(discount)}</b></div>` : "") +
       `<div class="summary-total"><span>Total</span><span>${money(total)}</span></div>`;
     $("summaryToggleTotal").textContent = money(total);
     $("methodTriggerText").textContent = labels[method] || method;
-    $("methodTriggerFee").textContent = fee === 0 ? "Free" : money(fee);
+    $("methodTriggerFee").textContent = CFG.shipping && method === "mail"
+      ? (quoteState.status === "ok" ? money(fee) : "Calculated")
+      : (fee === 0 ? "Free" : money(fee));
+  }
+
+  // ---------- live shipping (only when /config advertises it) ----------
+  //
+  // Every function here is a no-op unless CFG.shipping exists, so an unconfigured
+  // deploy keeps the old single textarea, the flat mail fee, no quote calls, and
+  // the old submit payload.
+
+  const PROVINCES = [
+    ["AB", "Alberta"], ["BC", "British Columbia"], ["MB", "Manitoba"], ["NB", "New Brunswick"],
+    ["NL", "Newfoundland and Labrador"], ["NS", "Nova Scotia"], ["ON", "Ontario"], ["NT", "Northwest Territories"],
+    ["NU", "Nunavut"], ["PE", "Prince Edward Island"], ["QC", "Quebec"], ["SK", "Saskatchewan"], ["YT", "Yukon"]
+  ];
+
+  const POSTAL_RE = /^[A-Za-z]\d[A-Za-z][ -]?\d[A-Za-z]\d$/;
+  function clean(s) { return String(s || "").trim(); }
+  // Normalise to the server's shape: uppercase, spaces and dashes stripped.
+  function cleanPostal(p) {
+    const s = clean(p).toUpperCase().replace(/\s+/g, "").replace(/-/g, "");
+    return POSTAL_RE.test(s) ? s : "";
+  }
+  function fieldVal(name) {
+    const el = document.querySelector(`[name="${name}"]`);
+    return el ? el.value : "";
+  }
+
+  // Swap the single textarea for the structured block and reveal the quote/nudge
+  // panels. With no shipping key these stay hidden — and a [hidden] descendant is
+  // never submitted — so the flag-off form is byte-identical to before.
+  function buildAddressUI() {
+    if (!CFG.shipping) return;
+    const wrap = $("addressWrap");
+    if (wrap) wrap.remove();
+    $("quotePanel").hidden = false;
+    $("localNudge").hidden = false;
+    const sel = document.querySelector('[name="province"]');
+    if (sel) sel.innerHTML = PROVINCES.map(([c, n]) => `<option value="${c}">${n}</option>`).join("");
+  }
+
+  function wireAddressFields() {
+    ["name", "address", "city", "province", "postalCode", "phone"].forEach((name) => {
+      const el = document.querySelector(`[name="${name}"]`);
+      if (!el) return;
+      el.addEventListener("input", () => {
+        if (name === "postalCode") onPostalInput();
+        else scheduleQuote();
+      });
+    });
+    const postal = document.querySelector('[name="postalCode"]');
+    if (postal) postal.addEventListener("blur", onPostalBlur);
+  }
+
+  function addressFields(m) {
+    if (!CFG.shipping) return { street: clean(fieldVal("address")) };
+    return {
+      name: clean(fieldVal("name")),
+      street: clean(fieldVal("address")),
+      city: clean(fieldVal("city")),
+      province: clean(fieldVal("province")),
+      postal: cleanPostal(fieldVal("postalCode")),
+      phone: clean(fieldVal("phone"))
+    };
+  }
+  // Mail and (flag-on) delivery both need the full address; the server refuses a
+  // delivery without city/province/phone, so stating fewer would reach a 400.
+  function addressComplete(m) {
+    const f = addressFields(m);
+    if (!f.street) return false;
+    if (!CFG.shipping) return true;
+    if (!f.name) return false;
+    return !!f.postal && !!f.city && !!f.province && !!f.phone;
+  }
+
+  function setModalErr(text) {
+    $("modalAddrErr").textContent = text;
+    $("modalAddrErr").classList.remove("hidden");
+  }
+  function focusFirstMissing(m) {
+    const f = addressFields(m);
+    if (!CFG.shipping) { if (!f.street) document.querySelector('[name="address"]').focus(); return; }
+    const want = { name: f.name, address: f.street, city: f.city, province: f.province, postalCode: f.postal, phone: f.phone };
+    for (const k of ["name", "address", "city", "province", "postalCode", "phone"]) {
+      if (!want[k]) { const el = document.querySelector(`[name="${k}"]`); if (el) { el.focus(); return; } }
+    }
+  }
+
+  function selectedShippingNet() {
+    if (!CFG.shipping || chosenMethod() !== "mail") return 0;
+    if (quoteState.status !== "ok") return 0;
+    const opt = quoteState.options[quoteState.selectedIndex];
+    return opt ? opt.chargeCents : 0;
+  }
+  function shippingValueFor(method) {
+    if (!CFG.shipping) return null;
+    if (method === "mail") return quoteState.status === "ok" ? money(selectedShippingNet()) : "Calculated at checkout";
+    return "$0.00";
+  }
+
+  let quoteTimer = null;
+  let quoteSeq = 0;
+  // status: idle (before any quote) · loading · ok · none · error
+  let quoteState = { status: "idle", quoteId: null, expiresAt: null, options: [], selectedIndex: 0, local: false };
+
+  function quoteExpired() {
+    return quoteState.status === "ok" && quoteState.expiresAt && new Date(quoteState.expiresAt).getTime() <= Date.now();
+  }
+  function clearQuote() {
+    quoteState = { status: "idle", quoteId: null, expiresAt: null, options: [], selectedIndex: 0, local: false };
+  }
+  function needsQuote() {
+    if (!CFG.shipping) return false;
+    if (chosenMethod() !== "mail") return false;
+    return !!cleanPostal(fieldVal("postalCode"));
+  }
+
+  function scheduleQuote() {
+    if (quoteTimer) clearTimeout(quoteTimer);
+    quoteTimer = setTimeout(runQuote, 400);
+  }
+
+  // Prefill city/province from the public lookup, but never overwrite a typed
+  // value and never block the customer — a failed lookup is silent.
+  async function lookupAddress(postal) {
+    if (!CFG.shipping) return;
+    try {
+      const res = await fetch(API_BASE + "/shipping/lookup", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ postalCode: postal })
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      prefillIfEmpty("city", data.city);
+      prefillIfEmpty("province", data.province);
+    } catch {
+      // best-effort
+    }
+  }
+  function prefillIfEmpty(name, value) {
+    if (!value) return;
+    const el = document.querySelector(`[name="${name}"]`);
+    if (el && !el.value.trim()) el.value = value;
+  }
+
+  function onPostalInput() {
+    const valid = !!cleanPostal(fieldVal("postalCode"));
+    // A changed postal invalidates the old rate even when the new one is still
+    // valid; drop it so the summary can never show a price for another address.
+    if (quoteState.status !== "idle") { clearQuote(); renderQuoteOptions(); }
+    if (valid) scheduleQuote();
+    // The local-nudge / delivery-block both hinge on the postal, so re-evaluate
+    // it on every keystroke, not only when the mail quote is recomputed.
+    renderLocalNudge();
+    updateSubmitLocked();
+  }
+  async function onPostalBlur() {
+    const postal = cleanPostal(fieldVal("postalCode"));
+    if (!postal) return;
+    await lookupAddress(postal);
+    scheduleQuote();
+  }
+
+  async function runQuote() {
+    if (!needsQuote()) return;
+    const seq = ++quoteSeq;
+    quoteState.status = "loading";
+    renderQuoteOptions();
+    updateSubmitLocked();
+    try {
+      const res = await fetch(API_BASE + "/shipping/quote", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          postalCode: cleanPostal(fieldVal("postalCode")),
+          city: clean(fieldVal("city")),
+          street: clean(fieldVal("address")),
+          batch: batchId(),
+          deckboxes: deckboxCount()
+        })
+      });
+      const data = await res.json();
+      if (seq !== quoteSeq) return; // a newer request superseded this one
+      if (!res.ok) {
+        quoteState.status = "error";
+      } else if (!Array.isArray(data.options) || data.options.length === 0) {
+        clearQuote();
+        quoteState.status = "none";
+      } else {
+        quoteState = { status: "ok", quoteId: data.quoteId, expiresAt: data.expiresAt, options: data.options, selectedIndex: 0, local: !!data.local };
+      }
+    } catch {
+      if (seq !== quoteSeq) return;
+      quoteState.status = "error";
+    }
+    renderQuoteOptions();
+    updateSubmitLocked();
+    renderLocalNudge();
+    recalc();
+  }
+
+  function renderQuoteOptions() {
+    const wrap = $("quoteOptions");
+    const st = quoteState.status;
+    if (st === "loading") { wrap.innerHTML = `<div class="quote-empty">Calculating shipping…</div>`; return; }
+    if (st === "error") { wrap.innerHTML = `<div class="quote-empty">Shipping quote unavailable — try again.</div>`; return; }
+    if (st === "none") { wrap.innerHTML = `<div class="quote-empty">No shipping options for this address — choose pickup or local delivery, or contact us.</div>`; return; }
+    if (st === "idle") { wrap.innerHTML = `<div class="quote-empty">Calculated at checkout</div>`; return; }
+    wrap.innerHTML = quoteState.options.map((o, i) => {
+      const checked = i === quoteState.selectedIndex ? "checked" : "";
+      return `<label class="method ${i === quoteState.selectedIndex ? "selected" : ""}">
+        <input type="radio" name="shippingOption" value="${i}" ${checked}>
+        <span><b>${escapeHtml(o.carrier)} · ${escapeHtml(o.service)}</b><br>
+        <small>${escapeHtml(o.transit || "")} · ${money(o.chargeCents)}</small></span>
+      </label>`;
+    }).join("");
+    wrap.querySelectorAll("input[type=radio]").forEach((r) => r.addEventListener("change", () => {
+      quoteState.selectedIndex = parseInt(r.value, 10);
+      recalc();
+      updateSubmitLocked();
+    }));
+  }
+
+  function isLocalPostal() {
+    const p = cleanPostal(fieldVal("postalCode"));
+    return !!p && (CFG.shipping.localPrefixes || []).includes(p.slice(0, 3));
+  }
+
+  function updateQuoteVisibility() {
+    if (!CFG.shipping) {
+      $("quotePanel").classList.add("hidden");
+      $("localNudge").classList.add("hidden");
+      return;
+    }
+    $("quotePanel").classList.toggle("hidden", chosenMethod() !== "mail");
+  }
+
+  function renderLocalNudge() {
+    const nud = $("localNudge");
+    if (!CFG.shipping) { nud.hidden = true; updateSubmitLocked(); return; }
+    const m = chosenMethod();
+    const postal = cleanPostal(fieldVal("postalCode"));
+    const local = isLocalPostal() || quoteState.local;
+    if (m === "mail" && postal && local) {
+      nud.hidden = false;
+      nud.className = "local-nudge";
+      nud.innerHTML = `<strong>You're in Ottawa/Gatineau. Local pickup and local delivery are free.</strong>` +
+        `<div class="nudge-actions">
+          <button type="button" data-nudge="delivery">Switch to free local delivery</button>
+          <button type="button" data-nudge="pickup" class="secondary">Switch to pickup</button>
+        </div>`;
+      nud.querySelectorAll("[data-nudge]").forEach((b) => b.addEventListener("click", () => onNudgeClick(b.dataset.nudge)));
+    } else if (m === "delivery" && postal && !local) {
+      nud.hidden = false;
+      nud.className = "local-nudge warn";
+      nud.innerHTML = `<strong>Local delivery is only available in Ottawa/Gatineau — choose mail.</strong>`;
+    } else {
+      nud.hidden = true;
+    }
+    updateSubmitLocked();
+  }
+
+  function onNudgeClick(meth) {
+    // Keep the address that is already in the fields; drop the quote so the
+    // customer re-chooses a method without losing their address.
+    const r = document.querySelector(`input[name="fulfillment"][value="${meth}"]`);
+    if (r) r.checked = true;
+    clearQuote();
+    onMethodChange();
+  }
+
+  function batchId() {
+    const batch = $("batchSize").selectedOptions[0];
+    return (batch && batch.dataset.id) ? batch.dataset.id : batch.value;
+  }
+
+  // Mail cannot submit without a live, matching quote, so block the button while
+  // it is loading, failed, or simply has no options yet.
+  function updateSubmitLocked() {
+    const btn = $("orderForm").querySelector('button[type="submit"]');
+    if (!btn) return;
+    let locked = false;
+    if (CFG.shipping && chosenMethod() === "mail") {
+      locked = quoteState.status !== "ok";
+    } else if (CFG.shipping && chosenMethod() === "delivery") {
+      const postal = cleanPostal(fieldVal("postalCode"));
+      locked = !!postal && !isLocalPostal();
+    }
+    btn.disabled = locked;
   }
 
   // ---------- collapsible summary (mobile) ----------
@@ -598,15 +970,40 @@
     if (modalTriggerEl) modalTriggerEl.focus();
   }
 
-  function tryConfirm() {
+  async function tryConfirm() {
     const m = chosenMethod();
     const needsAddr = m === "delivery" || m === "mail";
-    const addrVal = document.querySelector('[name="address"]').value.trim();
-    if (needsAddr && !addrVal) {
-      $("modalAddrErr").textContent = "An address is required for this delivery method.";
-      $("modalAddrErr").classList.remove("hidden");
-      document.querySelector('[name="address"]').focus();
+    if (!needsAddr) {
+      recalc();
+      closeModal({ restore: false });
       return;
+    }
+    if (!addressComplete(m)) {
+      setModalErr("Please fill in all the required address fields.");
+      focusFirstMissing(m);
+      return;
+    }
+    if (CFG.shipping && m === "mail") {
+      if (quoteExpired()) {
+        setModalErr("Your shipping quote expired. Refresh it, review the price, then continue.");
+        scheduleQuote();
+        return;
+      }
+      if (quoteState.status !== "ok") {
+        // Start the quote if it has not finished yet, so a plain confirm on a
+        // valid address still proceeds once the rate returns.
+        if (needsQuote()) await runQuote();
+        if (quoteState.status !== "ok") {
+          setModalErr(
+            quoteState.status === "none"
+              ? "No shipping options for this address — choose pickup or local delivery."
+              : quoteState.status === "error"
+                ? "Shipping quote unavailable — try again."
+                : "Choose a shipping option above before you continue."
+          );
+          return;
+        }
+      }
     }
     recalc();
     closeModal({ restore: false });
@@ -1021,7 +1418,47 @@
       return;
     }
 
+    // The modal's confirm validates the address, but closing it without
+    // confirming must not let an incomplete mail/delivery order through.
+    if (CFG.shipping && (chosenMethod() === "mail" || chosenMethod() === "delivery") && !addressComplete(chosenMethod())) {
+      msg.className = "err";
+      msg.textContent = "Please complete the delivery address before submitting.";
+      submitBtn.disabled = false;
+      return;
+    }
+    if (CFG.shipping && chosenMethod() === "mail" && quoteState.status !== "ok") {
+      msg.className = "err";
+      msg.textContent = "Choose a shipping option before submitting.";
+      submitBtn.disabled = false;
+      return;
+    }
+
+    // A mail order must carry a live, matching quote. If the stored one has
+    // expired, refresh it now and require the customer to review the new price
+    // before submitting again — never place a fresh order on a retry.
+    if (CFG.shipping && chosenMethod() === "mail" && quoteExpired()) {
+      await runQuote();
+      recalc();
+      renderQuoteOptions();
+      updateSubmitLocked();
+      submitBtn.disabled = false;
+      if (quoteState.status !== "ok") {
+        msg.className = "hint";
+        msg.textContent = "Your shipping quote could not be refreshed — please review the options and submit again.";
+        return;
+      }
+      msg.className = "hint";
+      msg.textContent = "Shipping price changed — please review and submit again.";
+      return;
+    }
+
     const fd = new FormData($("orderForm"));
+    // Flag-off: strip every live-shipping field so the payload is exactly what
+    // the old form sent, no matter whether the browser submits the hidden
+    // structured block. This does not depend on the [hidden] attribute alone.
+    if (!CFG.shipping) {
+      ["name", "city", "province", "postalCode", "phone", "shippingOption"].forEach((k) => fd.delete(k));
+    }
     for (const kind of ["pdf", "xml"]) {
       const rec = UPLOADS[kind];
       if (rec && rec.state === "done") {
@@ -1039,25 +1476,59 @@
       const boxes = deckboxCount();
       if (boxes > 0) extrasSummary.push(`${boxes} clear deckboxes`);
     }
-    fd.set("details", `Batch: ${batchLabel}\nFinish: ${finishLabel}` +
-      (notes ? `\nNotes: ${notes}` : "") +
-      (extrasSummary.length ? `\nExtras: ${extrasSummary.join(", ")}` : ""));
-    fd.set("amountCents", String(baseCents() + addOnsCents()));
+    let details = `Batch: ${batchLabel}\nFinish: ${finishLabel}`;
+    if (notes) details += `\nNotes: ${notes}`;
+    if (extrasSummary.length) details += `\nExtras: ${extrasSummary.join(", ")}`;
+    // The carrier/service travels in the notes so the admin console records the
+    // chosen option; the server stores the rest of the address from the fields.
+    if (CFG.shipping) {
+      const m = chosenMethod();
+      const opt = (m === "mail" && quoteState.status === "ok") ? quoteState.options[quoteState.selectedIndex] : null;
+      if (opt) details += `\nShipping: ${opt.carrier} · ${opt.service}${opt.chargeCents ? ` · ${money(opt.chargeCents)}` : ""}`;
+      else details += m === "mail" ? "\nShipping: calculated at checkout" : "\nShipping: local (free)";
+      fd.set("name", clean(fieldVal("name")));
+      fd.set("city", clean(fieldVal("city")));
+      fd.set("province", clean(fieldVal("province")));
+      fd.set("postalCode", cleanPostal(fieldVal("postalCode")));
+      fd.set("phone", clean(fieldVal("phone")));
+      if (m === "mail") {
+        fd.set("quoteId", quoteState.quoteId);
+        fd.set("quoteOption", String(quoteState.selectedIndex));
+      }
+      fd.set("batch", batchId());
+    }
+    fd.set("details", details);
+    // The net net is folded into the client total; the server recomputes the
+    // charge from the stored quote, but the payload should reflect it too.
+    fd.set("amountCents", String(baseCents() + addOnsCents() + selectedShippingNet()));
     if (CFG.addOns) {
       fd.set("deckboxes", String(deckboxCount()));
     }
     if (COUPON) fd.set("couponCode", COUPON.code);
-    const batchId = $("batchSize").selectedOptions[0].dataset.id;
     const finishId = $("finish").selectedOptions[0].dataset.id;
-    if (batchId) fd.set("batch", batchId);
     if (finishId) fd.set("finish", finishId);
 
-    let data;
+    let data, res;
     try {
-      const res = await fetch(API_BASE + "/order", { method: "POST", body: fd });
+      res = await fetch(API_BASE + "/order", { method: "POST", body: fd });
       data = await res.json();
       if (!res.ok) throw new Error(data.error || "Order failed");
     } catch (err) {
+      // A shipping quote that expired or no longer matches is a refresh job, not
+      // a new order. Re-quote, update the summary and re-enable the button, and
+      // leave placedOrder null so the guard still stands and no second order is
+      // created.
+      if (res && CFG.shipping && chosenMethod() === "mail" &&
+          (res.status === 409 || /quote|expired/i.test(err.message || ""))) {
+        await runQuote();
+        recalc();
+        renderQuoteOptions();
+        updateSubmitLocked();
+        msg.className = "hint";
+        msg.textContent = "Shipping price changed — please review the updated price and submit again.";
+        submitBtn.disabled = false;
+        return;
+      }
       msg.className = "err";
       msg.textContent = "Sorry — " + err.message;
       submitBtn.disabled = false;

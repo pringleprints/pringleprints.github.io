@@ -312,6 +312,24 @@
     }
     parts.push("Prices include tax.");
     document.getElementById("priceFootnote").textContent = parts.join(" ");
+
+    // Live shipping turns the "coming soon" promise into "calculated at
+    // checkout". Only when /config advertises the feature, so a deploy made
+    // before the Worker flag is on keeps the coming-soon copy it shipped with.
+    if (cfg.shipping) {
+      const lede = document.querySelector(".lede");
+      if (lede) {
+        lede.textContent = "Small-batch custom card and sheet printing. Send a print-ready file, pick a finish, and we'll take it from there — printed, cut, and ready for pickup or delivery. Based in the Ottawa–Gatineau area, with Canada-wide shipping calculated at checkout — local pickup and local delivery are free in Ottawa/Gatineau.";
+      }
+      const how = document.querySelector('section[aria-labelledby="how-h"] p:last-child');
+      if (how) {
+        how.textContent = "We ship Canada-wide, with shipping calculated at checkout. Local pickup and local delivery are free for customers in the Ottawa–Gatineau area.";
+      }
+      const meta = document.querySelector('meta[name="description"]');
+      if (meta) {
+        meta.content = "Small-batch custom card and sheet printing in the Ottawa–Gatineau area. Upload a print-ready PDF, pick your finish, and we'll handle the rest. Canada-wide shipping calculated at checkout; local pickup and delivery are free in Ottawa/Gatineau.";
+      }
+    }
   })();
 </script>
 </body>
