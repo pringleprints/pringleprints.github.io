@@ -57,11 +57,11 @@
   <a class="back" href="/">&larr; Pringle Prints</a>
   <p class="eyebrow">Order status</p>
   <h1>Track your order</h1>
-  <p class="lede">Enter your order number and status link from your confirmation email.</p>
+  <p class="lede">Open the link in your confirmation email, or enter your order number and status token below.</p>
 
   <form id="lookupForm">
     <label class="field">
-      <span class="label-text">Order ID</span>
+      <span class="label-text">Order number</span>
       <input type="text" id="f-id" placeholder="PP-XXXXXXXX" required>
     </label>
     <label class="field">
@@ -101,11 +101,11 @@
     let data;
     try {
       const res = await fetch(`${API_BASE}/status?id=${encodeURIComponent(id)}&t=${encodeURIComponent(t)}`);
-      if (res.status === 404) throw new Error("Order not found — check the ID and token.");
-      if (!res.ok) throw new Error("Something went wrong looking that up.");
+      if (res.status === 404) throw new Error("We couldn't find that order. Check the order number and status token.");
+      if (!res.ok) throw new Error("We couldn't look up that order. Try again.");
       data = await res.json();
     } catch (err) {
-      el("err").textContent = err.message || "Could not look up order.";
+      el("err").textContent = err.message || "We couldn't look up that order.";
       return;
     } finally {
       submitBtn.disabled = false;
@@ -137,11 +137,11 @@
     // Awaiting-payment copy is only for an unpaid, not-yet-cancelled order; a
     // cancelled one gets its own note instead.
     const payNote = !o.paid && o.status !== "cancelled"
-      ? `<div class="meetup">This order is awaiting payment. Paying by Interac e-Transfer? Put the order number above in the message. Paying in cash? Bring it when you collect.
+      ? `<div class="meetup">This order is awaiting payment. If you're paying by Interac e-Transfer, put the order number in the message. If you're paying cash, pay when you pick up or receive your order.
         <button type="button" id="copyOrderBtn" style="margin-left:8px;padding:4px 10px;font-size:14px">Copy order number</button>
          </div>` : "";
     const cancelledNote = o.status === "cancelled"
-      ? `<div class="meetup">This order was cancelled. If that is unexpected, reply to your confirmation email.</div>` : "";
+      ? `<div class="meetup">This order was cancelled. If that's unexpected, reply to your confirmation email.</div>` : "";
 
     el("result").innerHTML = `
       <div class="order-id">${escapeHtml(o.orderId)}</div>
