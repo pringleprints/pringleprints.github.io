@@ -606,7 +606,7 @@
     const radio = option.querySelector("input");
     radio.disabled = !allowed;
     option.classList.toggle("disabled", !allowed);
-    $("cashNote").classList.toggle("hidden", allowed);
+    $("cashNote").hidden = allowed;
     if (!allowed && radio.checked)
       document.querySelector('input[name="paymentMethod"][value="card"]').checked = true;
   }
