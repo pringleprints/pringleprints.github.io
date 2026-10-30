@@ -1105,7 +1105,11 @@
     } else if (m === "delivery" && postal && !local) {
       nud.hidden = false;
       nud.className = "local-nudge warn";
-      nud.innerHTML = `<strong>Local delivery is only available in Ottawa–Gatineau. Choose mail instead.</strong>`;
+      nud.innerHTML = `<strong>Local delivery is only available in Ottawa–Gatineau.</strong>` +
+        `<div class="nudge-actions">
+          <button type="button" data-nudge="mail">Switch to shipping</button>
+        </div>`;
+      nud.querySelectorAll("[data-nudge]").forEach((b) => b.addEventListener("click", () => onNudgeClick(b.dataset.nudge)));
     } else {
       nud.hidden = true;
     }
@@ -1538,6 +1542,15 @@
       msg.textContent = "Please complete the delivery address before submitting.";
       submitBtn.disabled = false;
       focusFirstEmptyAddressMethod();
+      return;
+    }
+    // The button is locked for an outside delivery postal, but pressing Enter
+    // (or re-enabling the button) must not get past it. The server checks this
+    // again; this is the matching client-side hard stop.
+    if (CFG.shipping && chosenMethod() === "delivery" && !isLocalPostal()) {
+      msg.className = "err";
+      msg.textContent = "Local delivery is only available in Ottawa–Gatineau. Switch to shipping or pickup.";
+      submitBtn.disabled = false;
       return;
     }
     if (CFG.shipping && chosenMethod() === "mail" && quoteState.status !== "ok") {
