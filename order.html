@@ -66,10 +66,6 @@
   .loyalty-banner.reward { background: var(--magenta-soft); color: var(--magenta-dark); font-weight: 600; }
   .loyalty-banner.progress { background: var(--paper-sunk); color: var(--ink-soft); }
 
-  .method-trigger { width: 100%; display: flex; justify-content: space-between; align-items: center; gap: 12px; background: var(--paper); color: var(--ink); border: 1.5px solid var(--rule); border-radius: 9px; padding: 13px 16px; font-weight: 600; text-align: left; }
-  .method-trigger:hover { background: var(--magenta-soft); border-color: var(--magenta); }
-  .method-trigger .chip { font-family: var(--mono); font-size: 13px; color: var(--ink-soft); font-weight: 500; flex-shrink: 0; }
-
   .upload { border: 1.5px dashed var(--rule); border-radius: 10px; padding: 26px 16px; text-align: center; cursor: pointer; transition: background-color .15s, border-color .15s; }
   .upload:hover, .upload:focus-visible { background: var(--magenta-soft); border-color: var(--magenta); }
   .upload.dragover { background: var(--magenta-soft); border-color: var(--magenta); border-style: solid; }
@@ -94,17 +90,32 @@
   .method.selected { border-color: var(--magenta); background: var(--magenta-soft); }
   .method input { width: auto; margin-top: 3px; accent-color: var(--magenta); }
   .method small { color: var(--ink-soft); }
+  /* A disallowed card (e.g. Cash when the order is by mail) stays laid out
+      exactly like the others — greyed and unselectable, never removed — so the
+      payment row keeps its shape and the reason reads beside it. */
+  .method.disabled { opacity: .55; cursor: not-allowed; }
+  .method.disabled input { pointer-events: none; }
 
-  .modal-backdrop { position: fixed; inset: 0; background: rgba(22,21,15,.5); display: flex; align-items: flex-end; justify-content: center; z-index: 100; }
-  @media (min-width: 640px) { .modal-backdrop { align-items: center; padding: 20px; } }
-  .modal-backdrop.hidden { display: none; }
-  .modal { background: var(--paper); width: 100%; max-width: 480px; max-height: 90vh; overflow-y: auto; border-radius: 16px 16px 0 0; padding: 22px; }
-  @media (min-width: 640px) { .modal { border-radius: 16px; } }
-  .modal-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; gap: 12px; }
-  .modal-head h2 { font-size: 18px; font-weight: 800; }
-  .modal-x { background: none; border: none; color: var(--ink-soft); font-size: 22px; padding: 4px 10px; line-height: 1; }
-  .modal-x:hover { background: none; color: var(--magenta); }
-  .modal-foot { margin-top: 18px; display: flex; justify-content: flex-end; }
+  .deckbox-stepper { display: inline-flex; align-items: center; gap: 8px; }
+  .deckbox-stepper input { text-align: center; max-width: 5rem; }
+  .deckbox-stepper button { padding: 9px 14px; font-size: 16px; }
+
+  .addr-locality { display: grid; gap: 8px; grid-template-columns: minmax(0, 1fr) 110px 140px; }
+  .addr-locality input, .addr-locality select, .addr-locality .field { min-width: 0; }
+  @media (max-width: 620px) {
+    .addr-locality { grid-template-columns: 1fr 1fr; }
+    .addr-locality > .field:first-child { grid-column: 1 / -1; }
+  }
+
+  /* Photon address suggestions: a floating listbox under the street field. */
+  .addr-suggestions { list-style: none; position: absolute; left: 0; right: 0; top: 100%; z-index: 6; background: var(--paper); border: 1.5px solid var(--magenta); border-radius: 8px; overflow: hidden; box-shadow: var(--shadow); max-height: 220px; overflow-y: auto; }
+  .addr-suggestions li { padding: 10px 12px; font-size: 14px; cursor: pointer; border-bottom: 1px solid var(--rule); }
+  .addr-suggestions li:last-child { border-bottom: none; }
+  .addr-suggestions li:hover, .addr-suggestions li[aria-selected="true"] { background: var(--magenta-soft); }
+  .addr-suggestions li[aria-selected="true"] { font-weight: 600; }
+  .addr-suggestions li[aria-hidden="true"] { display: none; }
+  .addr-suggestion-city { color: var(--ink-soft); font-size: 13px; }
+  .addr-credit { font-size: 12px; color: var(--ink-soft); margin-top: 4px; }
 
   .summary { background: var(--paper); border: 1px solid var(--rule); border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; }
   @media (min-width: 900px) { .summary { position: sticky; top: 20px; } }
@@ -127,7 +138,6 @@
   #msg.ok { color: var(--ok); }
   #msg.err { color: var(--danger); }
   #fileMsg.err { color: var(--danger); }
-  #modalAddrErr { color: var(--danger); margin-top: 8px; }
   a { color: var(--ink); text-decoration-color: var(--magenta); text-decoration-thickness: 2px; }
   a:hover { color: var(--magenta); }
   .order-id-box { background: var(--paper); border: 1.5px solid var(--ink); border-radius: 10px; padding: 16px; margin-top: 4px; }
@@ -157,8 +167,26 @@
 
   <div class="checkout">
     <form id="orderForm" class="checkout-form">
+      <section class="card" aria-labelledby="stepFiles">
+        <h2 class="card-title" id="stepFiles"><span class="step-num" aria-hidden="true">1</span>Files</h2>
+        <div class="field">
+          <span class="label-text">Print file (optional)</span>
+          <div class="upload" id="uploadZone" tabindex="0" role="button" aria-label="Upload your print file">
+            <div class="upload-copy">
+              <strong>Upload your print file (PDF)</strong>
+              <span class="hint">Drag &amp; drop, or click to browse.</span>
+            </div>
+          </div>
+          <input type="file" id="filePicker" accept=".pdf,.xml" multiple hidden>
+          <input type="file" name="xml" accept=".xml,text/xml,application/xml" hidden>
+          <input type="file" name="pdf" accept=".pdf,application/pdf" hidden>
+          <ul id="fileList" class="file-list"></ul>
+          <p id="fileMsg" class="hint hidden"></p>
+        </div>
+      </section>
+
       <section class="card" aria-labelledby="stepDetails">
-        <h2 class="card-title" id="stepDetails"><span class="step-num" aria-hidden="true">1</span>Details</h2>
+        <h2 class="card-title" id="stepDetails"><span class="step-num" aria-hidden="true">2</span>Order details</h2>
         <div class="field-group">
           <label class="field">
             <span class="label-text">Email</span>
@@ -187,63 +215,91 @@
             </select>
           </label>
 
+          <div id="deckboxField" class="field-group" hidden>
+            <label class="field" style="gap:8px">
+              <span class="label-text">Clear deckboxes</span>
+              <div class="deckbox-stepper">
+                <button type="button" id="deckboxMinus" aria-label="One fewer deckbox">−</button>
+                <input type="number" id="deckboxes" min="0" max="99" step="1" inputmode="numeric" value="0">
+                <button type="button" id="deckboxPlus" aria-label="One more deckbox">+</button>
+              </div>
+            </label>
+            <span class="hint" id="deckboxNote"></span>
+          </div>
+
           <label class="field">
             <span class="label-text">Notes / special requests</span>
-            <span class="hint">Anything we should know — e.g. “laminate the tokens only,” quantity details, timing.</span>
+            <span class="hint">Anything we should know — e.g. “foil the commanders only,” “laminate the tokens only,” quantity details, timing.</span>
             <textarea name="details" id="notes" rows="3"></textarea>
           </label>
         </div>
       </section>
 
-      <section class="card" aria-labelledby="stepFiles">
-        <h2 class="card-title" id="stepFiles"><span class="step-num" aria-hidden="true">2</span>Files</h2>
-        <div class="field">
-          <span class="label-text">Print file (optional)</span>
-          <div class="upload" id="uploadZone" tabindex="0" role="button" aria-label="Upload your print file">
-            <div class="upload-copy">
-              <strong>Upload your print file (PDF)</strong>
-              <span class="hint">Drag &amp; drop, or click to browse.</span>
-            </div>
-          </div>
-          <input type="file" id="filePicker" accept=".pdf,.xml" multiple hidden>
-          <input type="file" name="xml" accept=".xml,text/xml,application/xml" hidden>
-          <input type="file" name="pdf" accept=".pdf,application/pdf" hidden>
-          <ul id="fileList" class="file-list"></ul>
-          <p id="fileMsg" class="hint hidden"></p>
-        </div>
-      </section>
-
-      <section class="card" id="extrasCard" aria-labelledby="stepExtras" hidden>
-        <h2 class="card-title" id="stepExtras"><span class="step-num" aria-hidden="true">3</span>Deckboxes</h2>
-        <div class="field-group">
-          <label class="field">
-            <span class="label-text">Clear deckboxes</span>
-            <input type="number" id="deckboxes" min="0" max="99" step="1" value="0">
-            <span class="hint" id="deckboxNote"></span>
-          </label>
-        </div>
-      </section>
-
       <section class="card" aria-labelledby="stepDelivery">
-        <h2 class="card-title" id="stepDelivery"><span class="step-num" aria-hidden="true">4</span>Delivery</h2>
+        <h2 class="card-title" id="stepDelivery"><span class="step-num" aria-hidden="true">3</span>Delivery</h2>
         <div class="field">
           <span class="label-text">How would you like it?</span>
-          <button type="button" id="methodTrigger" class="method-trigger" aria-haspopup="dialog">
-            <span id="methodTriggerText">Choose a delivery method</span>
-            <span class="chip" id="methodTriggerFee"></span>
-          </button>
+          <div class="methods" id="methods"><!-- filled from /config --></div>
+        </div>
+        <!-- Old single-line address, kept for the flag-off (no shipping) path.
+             For flag-on, buildAddressUI() removes it, so the structured block
+             below is the only address control. -->
+        <div id="addressWrap" class="hidden field" style="margin-top:14px">
+          <span class="label-text" id="addressLabel">Address</span>
+          <textarea name="address" rows="2" placeholder="Street, unit, city, postal code"></textarea>
+        </div>
+        <!-- Flag-on only (when /config advertises shipping) this structured
+             block is shown and the textarea above is removed, so the submitted
+             fields are exactly the structured ones. While hidden it is inert: a
+             descendant of a [hidden] element is never submitted, keeping the
+             flag-off payload byte-identical. Photon autocomplete and the quote
+             both live here. -->
+        <div id="addrStructured" class="field" style="margin-top:14px;display:none;gap:10px;grid-template-columns:1fr" hidden>
+          <label class="field">
+            <span class="label-text">Recipient name</span>
+            <input type="text" name="name" autocomplete="name">
+          </label>
+          <div class="field" style="position:relative">
+            <label class="field" style="gap:6px">
+              <span class="label-text" id="addrStreetLabel">Street address</span>
+              <input type="text" name="address" id="addrStreet" autocomplete="street-address" placeholder="Street address, unit">
+            </label>
+            <ul id="addrSuggestions" class="addr-suggestions" role="listbox" aria-labelledby="addrStreetLabel" hidden></ul>
+            <p class="addr-credit"><a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">Address suggestions © OpenStreetMap contributors</a></p>
+          </div>
+          <div class="addr-locality">
+            <label class="field">
+              <span class="label-text">City</span>
+              <input type="text" name="city" autocomplete="address-level2">
+            </label>
+            <label class="field">
+              <span class="label-text">Province</span>
+              <select name="province" autocomplete="address-level1"></select>
+            </label>
+            <label class="field">
+              <span class="label-text">Postal code</span>
+              <input type="text" name="postalCode" inputmode="text" pattern="[A-Za-z][0-9][A-Za-z][ -]?[0-9][A-Za-z][0-9]" title="A1A 1A1" maxlength="7" autocomplete="postal-code" placeholder="K1A 1A1">
+            </label>
+          </div>
+          <label class="field">
+            <span class="label-text">Phone</span>
+            <input type="tel" name="phone" autocomplete="tel">
+          </label>
+          <p class="hint" style="margin-top:6px">All fields are required.</p>
         </div>
         <!-- Flag-on only: the live quote options and the local nudge. Hidden by
-             default so they never show or submit on an unconfigured deploy. -->
+             default so they never show or submit on an unconfigured deploy. The
+             tracking note is toggled by renderQuoteOptions, not shown here. -->
         <div id="quotePanel" class="hidden" style="margin-top:12px">
           <span class="label-text">Shipping</span>
           <div id="quoteOptions" class="methods" style="margin-top:6px"></div>
+          <div id="trackingNote" class="quote-note" style="margin-top:6px" hidden>We'll email a tracking number when your order ships.</div>
         </div>
         <div id="localNudge" class="hidden" style="margin-top:12px"></div>
       </section>
 
       <section class="card" aria-labelledby="stepPay">
-        <h2 class="card-title" id="stepPay"><span class="step-num" aria-hidden="true">5</span>Pay</h2>
+        <h2 class="card-title" id="stepPay"><span class="step-num" aria-hidden="true">4</span>Pay</h2>
         <div class="field">
           <span class="label-text">How would you like to pay?</span>
           <div class="methods" id="payMethods">
@@ -255,11 +311,12 @@
               <input type="radio" name="paymentMethod" value="etransfer">
               <span><b>Interac e-Transfer</b><br><small>We'll show you where to send it</small></span>
             </label>
-            <label class="method hidden" id="cashOption">
+            <label class="method" id="cashOption">
               <input type="radio" name="paymentMethod" value="cash">
               <span><b>Cash</b><br><small>Pay when you collect</small></span>
             </label>
           </div>
+          <p id="cashNote" class="hint" style="margin-top:.6rem" hidden>Cash is only available for pickup or local delivery.</p>
         </div>
         <div class="actions">
           <button type="submit">Review &amp; pay</button>
@@ -280,62 +337,7 @@
         </div>
       </section>
 
-      <!-- Inside the form (not a sibling) so the actual name="fulfillment"/
-           name="address" fields here remain part of FormData(orderForm) --
-           the modal is a position:fixed overlay, so DOM nesting here has
-           no effect on where it renders. -->
-      <div class="modal-backdrop hidden" id="modalBackdrop">
-        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle" id="fulfillmentModal">
-          <div class="modal-head">
-            <h2 id="modalTitle">Choose delivery method</h2>
-            <button type="button" class="modal-x" id="modalCloseBtn" aria-label="Close">&times;</button>
-          </div>
-          <div class="methods" id="methods"><!-- filled from /config --></div>
-          <div id="addressWrap" class="hidden field" style="margin-top:14px">
-            <span class="label-text" id="addressLabel">Address</span>
-            <textarea name="address" rows="2" placeholder="Street, unit, city, postal code"></textarea>
-            <p id="modalAddrErr" class="hint hidden"></p>
-          </div>
-          <!-- Flag-on only (when /config advertises shipping) this structured
-               block is shown and the single textarea above is removed, so the
-               submitted fields are exactly the structured ones. While hidden it
-               is inert: a descendant of a [hidden] element is never submitted,
-               keeping the flag-off payload byte-identical. -->
-          <div id="addrStructured" class="field" style="margin-top:14px;display:none;gap:10px;grid-template-columns:1fr" hidden>
-            <label class="field">
-              <span class="label-text">Recipient name</span>
-              <input type="text" name="name" autocomplete="name">
-            </label>
-            <label class="field">
-              <span class="label-text" id="addrStreetLabel">Street address</span>
-              <input type="text" name="address" autocomplete="street-address" placeholder="Street address, unit">
-            </label>
-            <div class="field" style="display:grid;gap:8px;grid-template-columns:1fr 120px 160px">
-              <label class="field">
-                <span class="label-text">City</span>
-                <input type="text" name="city" autocomplete="address-level2">
-              </label>
-              <label class="field">
-                <span class="label-text">Province</span>
-                <select name="province" autocomplete="address-level1"></select>
-              </label>
-              <label class="field">
-                <span class="label-text">Postal code</span>
-                <input type="text" name="postalCode" inputmode="text" autocomplete="postal-code" placeholder="K1A 1A1">
-              </label>
-            </div>
-            <label class="field">
-              <span class="label-text">Phone</span>
-              <input type="tel" name="phone" autocomplete="tel">
-            </label>
-            <p id="modalAddrErr" class="hint hidden"></p>
-          </div>
-          <div class="modal-foot">
-            <button type="button" id="modalConfirmBtn">Confirm</button>
-          </div>
-        </div>
-      </div>
-    </form>
+     </form>
 
     <aside class="summary" id="summaryPanel">
       <button type="button" class="summary-toggle" id="summaryToggle" aria-expanded="false" aria-controls="summaryBody">
@@ -373,6 +375,7 @@
     wireAddressFields();
     renderMethods();
     syncExtras();
+    reflectDeckboxButtons();
     updateQuoteVisibility();
     recalc();
     syncCashOption();
@@ -442,8 +445,28 @@
     if (input.value.trim() === "" || isNaN(n)) n = 0; // empty reads as zero
     input.value = String(Math.max(0, Math.min(99, n))); // clamp to the 0–99 range
     recalc();
+    reflectDeckboxButtons();
     if (CFG.shipping) scheduleQuote(); // deckboxes change the mail rate
   });
+
+  // The stepper buttons set the value and dispatch the same input event the
+  // typed handler listens for, so clamping, recalc, quote-schedule, and the
+  // note/total all stay in one place. Disabled at the 0/99 ends.
+  function reflectDeckboxButtons() {
+    const minus = $("deckboxMinus"), plus = $("deckboxPlus");
+    if (!minus || !plus) return;
+    const n = deckboxCount();
+    minus.disabled = n <= 0;
+    plus.disabled = n >= 99;
+  }
+  function setDeckbox(n) {
+    const input = $("deckboxes");
+    input.value = String(Math.max(0, Math.min(99, n)));
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    reflectDeckboxButtons();
+  }
+  $("deckboxMinus").addEventListener("click", () => setDeckbox(deckboxCount() - 1));
+  $("deckboxPlus").addEventListener("click", () => setDeckbox(deckboxCount() + 1));
 
   function couponCents() {
     return COUPON ? Math.min(COUPON.amountCents, baseCents()) : 0;
@@ -484,10 +507,17 @@
 
   function renderMethods() {
     $("methods").innerHTML = CFG.methods.map((m, i) => {
-      const fee = CFG.fees[m] || 0;
-      let note = fee === 0 ? "Free" : money(fee);
-      if (m === "delivery" && CFG.freeDeliveryOverCents > 0)
-        note += ` · free over ${money(CFG.freeDeliveryOverCents)}`;
+      let note;
+      if (CFG.shipping) {
+        // Live shipping: mail is priced from the quote (shown later as
+        // "Calculated at checkout"), while pickup and local delivery are free.
+        note = m === "mail" ? "Calculated at checkout" : "Free";
+      } else {
+        const fee = CFG.fees[m] || 0;
+        note = fee === 0 ? "Free" : money(fee);
+        if (m === "delivery" && CFG.freeDeliveryOverCents > 0)
+          note += ` · free over ${money(CFG.freeDeliveryOverCents)}`;
+      }
       return `<label class="method">
         <input type="radio" name="fulfillment" value="${m}" ${i === 0 ? "checked" : ""}>
         <span><b>${labels[m] || m}</b><br><small>${note}</small></span>
@@ -540,7 +570,11 @@
   // for them, so the section stays hidden — and its controls stay inert — on
   // any deployment that predates the feature.
   function syncExtras() {
-    $("extrasCard").toggleAttribute("hidden", !CFG.addOns);
+    // The Deckboxes card was folded into Order details, so the wrapper toggles
+    // here instead. Guards on CFG.addOns elsewhere keep it inert when the API
+    // has no add-on prices.
+    $("deckboxField").toggleAttribute("hidden", !CFG.addOns);
+    reflectDeckboxButtons();
   }
 
   function chosenMethod() {
@@ -562,13 +596,17 @@
   }
 
   // Cash only makes sense where you and the customer are in the same room.
-  // Offering it on a mail order would mean posting the cards and hoping.
+  // Offering it on a mail order would mean posting the cards and hoping. Instead
+  // of hiding the card, keep it in the row — greyed and disabled — with a short
+  // reason, so the payment layout never shifts and the customer sees why. If
+  // cash was already chosen, switch to card so a mail switch can't pay cash.
   function syncCashOption() {
     const allowed = chosenMethod() === "pickup" || chosenMethod() === "delivery";
     const option = $("cashOption");
-    option.classList.toggle("hidden", !allowed);
     const radio = option.querySelector("input");
     radio.disabled = !allowed;
+    option.classList.toggle("disabled", !allowed);
+    $("cashNote").hidden = allowed;
     if (!allowed && radio.checked)
       document.querySelector('input[name="paymentMethod"][value="card"]').checked = true;
   }
@@ -586,11 +624,13 @@
       return;
     }
     // Flag-on: the structured block replaces the textarea (removed by
-    // buildAddressUI); street is required for both mail and delivery.
+    // buildAddressUI). The six structured fields are required for mail and
+    // delivery, and cleared for pickup (and while the block is hidden they carry
+    // no required, so they are never a candidate for native validation).
     $("addrStructured").hidden = !needsAddr;
     $("addrStructured").style.display = needsAddr ? "grid" : "none";
+    setAddrRequired(needsAddr);
     document.getElementById("addrStreetLabel").textContent = m === "mail" ? "Mailing address" : "Delivery address";
-    document.querySelector('[name="address"]').required = needsAddr;
     highlightSelectedMethod();
     // Leaving mail drops the quote: pickup and local delivery need none.
     // Arriving at mail re-quotes so the rate tracks the current batch/deckboxes.
@@ -607,8 +647,8 @@
     const method = chosenMethod();
     let fee = feeFor(method, base);
     // When live shipping is active the flat mail fee is dropped: the total and
-    // the trigger chip carry the selected net for mail and nothing for
-    // pickup/local delivery, so the sum matches the shipping line below.
+    // the shipping line carry the selected net for mail and nothing for
+    // pickup/local delivery, so the sum matches the total below.
     if (CFG.shipping) fee = method === "mail" ? selectedShippingNet() : 0;
     const discount = couponCents();
     const addOns = addOnsCents();
@@ -633,10 +673,6 @@
       (discount ? `<div class="summary-line"><span>Coupon</span><b>-${money(discount)}</b></div>` : "") +
       `<div class="summary-total"><span>Total</span><span>${money(total)}</span></div>`;
     $("summaryToggleTotal").textContent = money(total);
-    $("methodTriggerText").textContent = labels[method] || method;
-    $("methodTriggerFee").textContent = CFG.shipping && method === "mail"
-      ? (quoteState.status === "ok" ? money(fee) : "Calculated")
-      : (fee === 0 ? "Free" : money(fee));
   }
 
   // ---------- live shipping (only when /config advertises it) ----------
@@ -673,7 +709,8 @@
     $("quotePanel").hidden = false;
     $("localNudge").hidden = false;
     const sel = document.querySelector('[name="province"]');
-    if (sel) sel.innerHTML = PROVINCES.map(([c, n]) => `<option value="${c}">${n}</option>`).join("");
+    if (sel) sel.innerHTML = `<option value="">Province</option>` + PROVINCES.map(([c, n]) => `<option value="${c}">${n}</option>`).join("");
+    wirePhoton();
   }
 
   function wireAddressFields() {
@@ -710,17 +747,39 @@
     return !!f.postal && !!f.city && !!f.province && !!f.phone;
   }
 
-  function setModalErr(text) {
-    $("modalAddrErr").textContent = text;
-    $("modalAddrErr").classList.remove("hidden");
+  // Mirror the required attribute the browser enforces with aria-required so
+  // assistive tech reports the state even before validation runs. Gated on
+  // needsAddr so a hidden block never carries required.
+  function setAddrRequired(on) {
+    ["name", "address", "city", "province", "postalCode", "phone"].forEach((n) => {
+      const el = document.querySelector(`[name="${n}"]`);
+      if (!el) return;
+      el.toggleAttribute("required", on);
+      el.setAttribute("aria-required", String(on));
+    });
   }
-  function focusFirstMissing(m) {
-    const f = addressFields(m);
-    if (!CFG.shipping) { if (!f.street) document.querySelector('[name="address"]').focus(); return; }
-    const want = { name: f.name, address: f.street, city: f.city, province: f.province, postalCode: f.postal, phone: f.phone };
-    for (const k of ["name", "address", "city", "province", "postalCode", "phone"]) {
-      if (!want[k]) { const el = document.querySelector(`[name="${k}"]`); if (el) { el.focus(); return; } }
+
+  // Native validation prevents posting, but the browser may not scroll the
+  // offending field into view. Move focus + scroll to the first empty required
+  // field so the customer sees what is missing.
+  function focusFirstEmptyAddressField(m) {
+    if (!CFG.shipping) {
+      const el = document.querySelector('[name="address"]');
+      if (el && !el.value.trim()) { el.focus(); scrollIntoViewSafe(el); }
+      return;
     }
+    for (const n of ["name", "address", "city", "province", "postalCode", "phone"]) {
+      const el = document.querySelector(`[name="${n}"]`);
+      if (el && !el.value.trim()) { el.focus(); scrollIntoViewSafe(el); return; }
+    }
+  }
+  // scrollIntoView is a no-op for off-screen fields, so never let a missing
+  // implementation (or an odd viewport) throw while focusing the offending field.
+  function scrollIntoViewSafe(el) {
+    if (typeof el.scrollIntoView === "function") el.scrollIntoView({ block: "center" });
+  }
+  function focusFirstEmptyAddressMethod() {
+    focusFirstEmptyAddressField(chosenMethod());
   }
 
   function selectedShippingNet() {
@@ -840,16 +899,24 @@
   function renderQuoteOptions() {
     const wrap = $("quoteOptions");
     const st = quoteState.status;
-    if (st === "loading") { wrap.innerHTML = `<div class="quote-empty">Calculating shipping…</div>`; return; }
-    if (st === "error") { wrap.innerHTML = `<div class="quote-empty">Shipping quote unavailable — try again.</div>`; return; }
-    if (st === "none") { wrap.innerHTML = `<div class="quote-empty">No shipping options for this address — choose pickup or local delivery, or contact us.</div>`; return; }
-    if (st === "idle") { wrap.innerHTML = `<div class="quote-empty">Calculated at checkout</div>`; return; }
+    // The tracking note is a promise tied to a live quote, so it only shows
+    // once options exist — never while calculating, failed, or empty.
+    const tracking = $("trackingNote");
+    if (st === "loading") { wrap.innerHTML = `<div class="quote-empty">Calculating shipping…</div>`; tracking.hidden = true; return; }
+    if (st === "error") { wrap.innerHTML = `<div class="quote-empty">Shipping quote unavailable — try again.</div>`; tracking.hidden = true; return; }
+    if (st === "none") { wrap.innerHTML = `<div class="quote-empty">No shipping options for this address — choose pickup or local delivery, or contact us.</div>`; tracking.hidden = true; return; }
+    if (st === "idle") { wrap.innerHTML = `<div class="quote-empty">Calculated at checkout</div>`; tracking.hidden = true; return; }
+    tracking.hidden = false;
     wrap.innerHTML = quoteState.options.map((o, i) => {
       const checked = i === quoteState.selectedIndex ? "checked" : "";
+      // The API may add serviceName/transitDays; fall back to service and a
+      // neutral estimate so nothing looks like a calendar date. transit is
+      // intentionally never shown — it is the calendar date, not the estimate.
+      const days = o.transitDays ? `${o.transitDays} business days after dispatch` : "Carrier estimate";
       return `<label class="method ${i === quoteState.selectedIndex ? "selected" : ""}">
         <input type="radio" name="shippingOption" value="${i}" ${checked}>
-        <span><b>${escapeHtml(o.carrier)} · ${escapeHtml(o.service)}</b><br>
-        <small>${escapeHtml(o.transit || "")} · ${money(o.chargeCents)}</small></span>
+        <span><b>${escapeHtml(o.serviceName || o.service)}</b><br>
+        <small>${days} · ${money(o.chargeCents)}</small></span>
       </label>`;
     }).join("");
     wrap.querySelectorAll("input[type=radio]").forEach((r) => r.addEventListener("change", () => {
@@ -857,6 +924,135 @@
       recalc();
       updateSubmitLocked();
     }));
+  }
+
+  // ---------- Photon address autocomplete (flag-on only) ----------
+  //
+  // Under the street field a debounced GET /shipping/autocomplete returns a few
+  // suggestions the customer picks by mouse or keyboard. The endpoint is public
+  // and may not be deployed yet: any 404/503/failure is treated as "no
+  // suggestions", so the list stays closed and manual entry always works. The
+  // OpenStreetMap credit underneath is always visible whenever this block is.
+
+  let photonSeq = 0;
+  let photonTimer = null;
+  let photonBlurTimer = null;
+  let photonIndex = -1;
+  let photonOptions = [];
+
+  function photonField() { return document.querySelector('[name="address"]'); }
+  function photonList() { return $("addrSuggestions"); }
+
+  // Debounce on typing settle and require at least 3 characters before querying.
+  function photonSchedule() {
+    if (photonTimer) clearTimeout(photonTimer);
+    if (clean(photonField().value).length < 3) { photonHide(); return; }
+    photonTimer = setTimeout(photonFetch, 300);
+  }
+
+  async function photonFetch() {
+    const street = clean(photonField().value);
+    if (street.length < 3) { photonHide(); return; }
+    const seq = ++photonSeq;
+    try {
+      const res = await fetch(API_BASE + "/shipping/autocomplete?q=" + encodeURIComponent(street));
+      if (!res.ok) { photonHide(); return; }
+      const data = await res.json();
+      if (seq !== photonSeq) return; // a newer query superseded this response
+      const list = (data && Array.isArray(data.suggestions)) ? data.suggestions : [];
+      photonOptions = list.slice(0, 5);
+      photonIndex = -1;
+      photonOptions.length ? photonRender() : photonHide();
+    } catch {
+      photonHide();
+    }
+  }
+
+  function photonRender() {
+    const list = photonList();
+    list.innerHTML = photonOptions.map((s, i) => {
+      const city = [s.city, s.province].filter(Boolean).join(", ");
+      return `<li role="option" data-index="${i}" aria-selected="${i === photonIndex}">` +
+        `<div>${escapeHtml(s.street || s.label)}</div>` + (city ? `<div class="addr-suggestion-city">${escapeHtml(city)}</div>` : "") + `</li>`;
+    }).join("");
+    list.hidden = false;
+    const field = photonField();
+    field.setAttribute("aria-expanded", "true");
+    field.setAttribute("aria-controls", "addrSuggestions");
+  }
+
+  function photonHide() {
+    if (photonTimer) { clearTimeout(photonTimer); photonTimer = null; }
+    if (photonBlurTimer) { clearTimeout(photonBlurTimer); photonBlurTimer = null; }
+    const list = photonList();
+    list.hidden = true;
+    list.innerHTML = "";
+    photonOptions = [];
+    photonIndex = -1;
+    const field = photonField();
+    field.removeAttribute("aria-expanded");
+    field.removeAttribute("aria-controls");
+  }
+
+  function photonSet(name, value) {
+    const el = document.querySelector(`[name="${name}"]`);
+    if (el) el.value = value;
+  }
+
+  function photonSelect(i) {
+    const s = photonOptions[i];
+    if (!s) return;
+    const field = photonField();
+    if (s.street) field.value = s.street;
+    if (s.city) photonSet("city", s.city);
+    if (s.province) photonSet("province", s.province);
+    if (s.postalCode) photonSet("postalCode", s.postalCode);
+    photonHide();
+    // A filled address changes the rate: drop any old quote before re-fetching,
+    // exactly how a typed postal invalidates the previous rate.
+    if (quoteState.status !== "idle") { clearQuote(); renderQuoteOptions(); }
+    scheduleQuote();
+    renderLocalNudge();
+    updateSubmitLocked();
+    recalc();
+  }
+
+  function wirePhoton() {
+    const field = photonField();
+    if (!field) return;
+    field.addEventListener("input", photonSchedule);
+    field.addEventListener("keydown", (e) => {
+      if (photonList().hidden) return;
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        photonIndex = Math.min(photonIndex + 1, photonOptions.length - 1);
+        photonUpdateActive();
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        photonIndex = Math.max(photonIndex - 1, 0);
+        photonUpdateActive();
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        photonHide();
+      } else if (e.key === "Enter") {
+        if (photonIndex >= 0) { e.preventDefault(); photonSelect(photonIndex); }
+      }
+    });
+    // Blur hides the list, but stay open briefly so a click into the list is not
+    // eaten by the blur — the list's own mousedown clears that delay.
+    field.addEventListener("blur", () => { photonBlurTimer = setTimeout(photonHide, 150); });
+    photonList().addEventListener("mousedown", () => { if (photonBlurTimer) { clearTimeout(photonBlurTimer); photonBlurTimer = null; } });
+    photonList().addEventListener("click", (e) => {
+      const li = e.target.closest("li[data-index]");
+      if (!li) return;
+      e.preventDefault();
+      photonSelect(parseInt(li.dataset.index, 10));
+    });
+  }
+
+  function photonUpdateActive() {
+    const items = photonList().querySelectorAll("li[data-index]");
+    items.forEach((li, i) => li.setAttribute("aria-selected", String(i === photonIndex)));
   }
 
   function isLocalPostal() {
@@ -934,107 +1130,6 @@
     $("summaryToggle").setAttribute("aria-expanded", String(!expanded));
     $("summaryBody").classList.toggle("collapsed", expanded);
   });
-
-  // ---------- fulfillment modal ----------
-
-  let modalSnapshot = null;
-  let modalTriggerEl = null;
-
-  function modalFocusables() {
-    return [...$("fulfillmentModal").querySelectorAll('button, input, textarea, select, [href], [tabindex]:not([tabindex="-1"])')]
-      .filter((el) => el.offsetParent !== null);
-  }
-
-  function openModal() {
-    modalTriggerEl = document.activeElement;
-    modalSnapshot = { method: chosenMethod(), address: document.querySelector('[name="address"]').value };
-    $("modalAddrErr").classList.add("hidden");
-    $("modalBackdrop").classList.remove("hidden");
-    document.body.style.overflow = "hidden";
-    const focusables = modalFocusables();
-    (focusables[0] || $("fulfillmentModal")).focus();
-    document.addEventListener("keydown", onModalKeydown);
-  }
-
-  function closeModal({ restore }) {
-    if (restore && modalSnapshot) {
-      document.querySelectorAll('input[name="fulfillment"]').forEach((r) => {
-        r.checked = r.value === modalSnapshot.method;
-      });
-      document.querySelector('[name="address"]').value = modalSnapshot.address;
-      onMethodChange();
-    }
-    $("modalBackdrop").classList.add("hidden");
-    document.body.style.overflow = "";
-    document.removeEventListener("keydown", onModalKeydown);
-    if (modalTriggerEl) modalTriggerEl.focus();
-  }
-
-  async function tryConfirm() {
-    const m = chosenMethod();
-    const needsAddr = m === "delivery" || m === "mail";
-    if (!needsAddr) {
-      recalc();
-      closeModal({ restore: false });
-      return;
-    }
-    if (!addressComplete(m)) {
-      setModalErr("Please fill in all the required address fields.");
-      focusFirstMissing(m);
-      return;
-    }
-    if (CFG.shipping && m === "mail") {
-      if (quoteExpired()) {
-        setModalErr("Your shipping quote expired. Refresh it, review the price, then continue.");
-        scheduleQuote();
-        return;
-      }
-      if (quoteState.status !== "ok") {
-        // Start the quote if it has not finished yet, so a plain confirm on a
-        // valid address still proceeds once the rate returns.
-        if (needsQuote()) await runQuote();
-        if (quoteState.status !== "ok") {
-          setModalErr(
-            quoteState.status === "none"
-              ? "No shipping options for this address — choose pickup or local delivery."
-              : quoteState.status === "error"
-                ? "Shipping quote unavailable — try again."
-                : "Choose a shipping option above before you continue."
-          );
-          return;
-        }
-      }
-    }
-    recalc();
-    closeModal({ restore: false });
-  }
-
-  function onModalKeydown(e) {
-    if (e.key === "Escape") {
-      e.preventDefault();
-      closeModal({ restore: true });
-      return;
-    }
-    if (e.key === "Tab") {
-      const list = modalFocusables();
-      if (!list.length) return;
-      const first = list[0], last = list[list.length - 1];
-      if (e.shiftKey && document.activeElement === first) {
-        e.preventDefault();
-        last.focus();
-      } else if (!e.shiftKey && document.activeElement === last) {
-        e.preventDefault();
-        first.focus();
-      }
-    }
-  }
-
-  $("methodTrigger").addEventListener("click", openModal);
-  $("modalCloseBtn").addEventListener("click", () => closeModal({ restore: true }));
-  $("modalBackdrop").addEventListener("click", (e) => {
-    if (e.target === $("modalBackdrop")) closeModal({ restore: true });
-  });
-  $("modalConfirmBtn").addEventListener("click", tryConfirm);
 
   // ---------- loyalty lookup (best-effort, never blocks checkout) ----------
   //
@@ -1424,6 +1519,7 @@
       msg.className = "err";
       msg.textContent = "Please complete the delivery address before submitting.";
       submitBtn.disabled = false;
+      focusFirstEmptyAddressMethod();
       return;
     }
     if (CFG.shipping && chosenMethod() === "mail" && quoteState.status !== "ok") {
